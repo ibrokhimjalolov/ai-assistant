@@ -115,6 +115,17 @@ describe('Worker', () => {
     expect(store.getTask(id)?.status).toBe('cancelled');
   });
 
+  it('injects the asking user identity into the prompt', async () => {
+    let seenPrompt = '';
+    const w = makeWorker({
+      async *run(req) { seenPrompt = req.prompt; yield { kind: 'final', text: 'ok' }; },
+    });
+    enqueueChat('what is my balance');
+    await w.tick();
+    expect(seenPrompt).toContain('Telegram user 7');
+    expect(seenPrompt).toContain('what is my balance');
+  });
+
   it('marks cancelled when cancel fires during the first run (before retry)', async () => {
     const w = makeWorker({
       async *run(req) {

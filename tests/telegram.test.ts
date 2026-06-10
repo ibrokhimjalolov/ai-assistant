@@ -38,10 +38,11 @@ describe('handleApprovalCallback', () => {
     const answers: string[] = [];
     const ctx = {
       match: [`apv:${approvalId}:y`, String(approvalId), 'y'],
+      from: { id: 11 },
       answerCallbackQuery: async (o: any) => { answers.push(o.text); },
       editMessageReplyMarkup: async () => {},
     } as any;
-    await handleApprovalCallback(gate, ctx);
+    await handleApprovalCallback(gate, store, ctx);
     expect((await pending).behavior).toBe('allow');
     expect(answers[0]).toContain('Recorded');
   });
@@ -55,6 +56,7 @@ describe('handleResumeCallback', () => {
     const answers: string[] = [];
     const ctx = {
       match: [`rsm:${tid}`, String(tid)],
+      from: { id: 11 },
       answerCallbackQuery: async (o: any) => { answers.push(o.text); },
     } as any;
     await handleResumeCallback(store, ctx);
@@ -68,8 +70,43 @@ describe('handleResumeCallback', () => {
     const answers: string[] = [];
     await handleResumeCallback(store, {
       match: ['rsm:999', '999'],
+      from: { id: 11 },
       answerCallbackQuery: async (o: any) => { answers.push(o.text); },
     } as any);
     expect(answers[0]).toContain('Not resumable');
+  });
+
+  it('rejects approval from a different user', async () => {
+    const tid = store.enqueueTask({ source: 'telegram', kind: 'chat', userId: 11, chatId: 11, prompt: 'p' });
+    const task = store.getTask(tid)!;
+    const pending = gate.check(task, 'Bash', { command: 'sudo x' });
+    const msg = store.unsentMessages().find((m) => m.kind === 'approval')!;
+    const approvalId = Number(JSON.parse(msg.replyMarkup!).inline_keyboard[0][0].callback_data.split(':')[1]);
+    const answers: string[] = [];
+    const ctx = {
+      match: [`apv:${approvalId}:y`, String(approvalId), 'y'],
+      from: { id: 99 }, // not the owner
+      answerCallbackQuery: async (o: any) => { answers.push(o.text); },
+      editMessageReplyMarkup: async () => {},
+    } as any;
+    await handleApprovalCallback(gate, store, ctx);
+    expect(answers[0]).toContain('Not your approval');
+    // resolve it properly so the pending promise doesn't dangle into the timeout
+    gate.resolve(approvalId, 'denied');
+    await pending;
+  });
+
+  it('rejects resume from a different user', async () => {
+    const tid = store.enqueueTask({ source: 'telegram', kind: 'chat', userId: 11, chatId: 11, prompt: 'long job' });
+    store.claimNextTask();
+    store.markInterruptedOnStartup();
+    const answers: string[] = [];
+    await handleResumeCallback(store, {
+      match: [`rsm:${tid}`, String(tid)],
+      from: { id: 99 },
+      answerCallbackQuery: async (o: any) => { answers.push(o.text); },
+    } as any);
+    expect(answers[0]).toContain('Not resumable');
+    expect(store.pendingTasks().filter((t) => t.status === 'queued')).toHaveLength(0);
   });
 });

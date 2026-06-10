@@ -86,11 +86,18 @@ export class Worker {
     if (task.kind === 'rotate') this.d.store.rotateSession(task.userId);
   }
 
+  private effectivePrompt(task: Task): string {
+    if (task.source === 'schedule') {
+      return `[Scheduled job created by Telegram user ${task.userId}]\n\n${task.prompt}`;
+    }
+    return `[Message from Telegram user ${task.userId}]\n\n${task.prompt}`;
+  }
+
   private async runOnce(task: Task, signal: AbortSignal, useResume: boolean, statusId: number): Promise<string> {
     const session = useResume ? this.d.store.getSession(task.userId) : undefined;
     let final = '';
     for await (const ev of this.d.runner.run({
-      prompt: task.prompt,
+      prompt: this.effectivePrompt(task),
       cwd: this.d.agentHome,
       resume: session?.claudeSessionId,
       signal,

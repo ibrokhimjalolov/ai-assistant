@@ -18,15 +18,26 @@ export function whitelistMiddleware(whitelist: number[]) {
   };
 }
 
-export async function handleApprovalCallback(gate: PermissionGate, ctx: Context & { match: RegExpMatchArray }): Promise<void> {
-  const ok = gate.resolve(Number(ctx.match[1]), ctx.match[2] === 'y' ? 'approved' : 'denied');
+export async function handleApprovalCallback(
+  gate: PermissionGate,
+  store: Store,
+  ctx: Context & { match: RegExpMatchArray },
+): Promise<void> {
+  const approvalId = Number(ctx.match[1]);
+  const approval = store.getApproval(approvalId);
+  const task = approval ? store.getTask(approval.taskId) : undefined;
+  if (!task || task.userId !== ctx.from?.id) {
+    await ctx.answerCallbackQuery({ text: 'Not your approval' });
+    return;
+  }
+  const ok = gate.resolve(approvalId, ctx.match[2] === 'y' ? 'approved' : 'denied');
   await ctx.answerCallbackQuery({ text: ok ? 'Recorded ✓' : 'Already decided or expired' });
   await ctx.editMessageReplyMarkup(undefined).catch(() => {});
 }
 
 export async function handleResumeCallback(store: Store, ctx: Context & { match: RegExpMatchArray }): Promise<void> {
   const t = store.getTask(Number(ctx.match[1]));
-  if (t && t.status === 'interrupted') {
+  if (t && t.status === 'interrupted' && t.userId === ctx.from?.id) {
     store.enqueueTask({
       source: 'telegram', kind: 'resume', userId: t.userId, chatId: t.chatId,
       prompt: 'Continue where you left off on the interrupted task.',
@@ -56,7 +67,7 @@ export function buildBot(cfg: Config, d: BotDeps): Bot {
   // ctx.match is typed as string | RegExpMatchArray in grammY v1.30 CallbackQueryContext;
   // with a regex filter it is always a RegExpMatchArray — cast to satisfy handleApprovalCallback/handleResumeCallback.
   bot.callbackQuery(/^apv:(\d+):(y|n)$/, (ctx) =>
-    handleApprovalCallback(d.gate, ctx as unknown as Context & { match: RegExpMatchArray }));
+    handleApprovalCallback(d.gate, d.store, ctx as unknown as Context & { match: RegExpMatchArray }));
   bot.callbackQuery(/^rsm:(\d+)$/, (ctx) =>
     handleResumeCallback(d.store, ctx as unknown as Context & { match: RegExpMatchArray }));
 
