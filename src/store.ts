@@ -64,9 +64,12 @@ export class Store {
   }
 
   markInterruptedOnStartup(): Task[] {
-    const rows = this.db.prepare(`SELECT * FROM tasks WHERE status = 'running'`).all() as any[];
-    this.db.prepare(`UPDATE tasks SET status = 'interrupted' WHERE status = 'running'`).run();
-    return rows.map((r) => toTask({ ...r, status: 'interrupted' }));
+    const run = this.db.transaction((): Task[] => {
+      const rows = this.db.prepare(`SELECT * FROM tasks WHERE status = 'running'`).all() as any[];
+      this.db.prepare(`UPDATE tasks SET status = 'interrupted' WHERE status = 'running'`).run();
+      return rows.map((r) => toTask({ ...r, status: 'interrupted' }));
+    });
+    return run();
   }
 
   // ---- sessions ----

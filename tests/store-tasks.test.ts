@@ -38,9 +38,13 @@ describe('tasks', () => {
   it('marks running tasks interrupted on startup', () => {
     const id = store.enqueueTask(t);
     store.claimNextTask();
+    const id2 = store.enqueueTask({ ...t, prompt: 'also running' });
+    // force a second running task by claiming it too
+    store.claimNextTask();
     const interrupted = store.markInterruptedOnStartup();
-    expect(interrupted.map((x) => x.id)).toEqual([id]);
+    expect(interrupted.map((x) => x.id).sort()).toEqual([id, id2].sort());
     expect(store.getTask(id)?.status).toBe('interrupted');
+    expect(store.getTask(id2)?.status).toBe('interrupted');
   });
 
   it('pendingTasks lists queued+running in order', () => {
