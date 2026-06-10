@@ -20,13 +20,17 @@ const DEFAULT_BASH_ALLOWLIST = [
   '^pwd$',
 ];
 
+const DEFAULTS = {
+  approvalTimeoutMs: 900_000,
+  bashAllowlist: DEFAULT_BASH_ALLOWLIST,
+};
+
 const TEMPLATE = {
   telegramBotToken: '',
   whitelist: [],
   agentHome: '',
   claudeOauthToken: '',
-  approvalTimeoutMs: 900_000,
-  bashAllowlist: DEFAULT_BASH_ALLOWLIST,
+  ...DEFAULTS,
 };
 
 export function loadConfig(configPath: string): Config {
@@ -37,7 +41,12 @@ export function loadConfig(configPath: string): Config {
         `Fill in telegramBotToken, whitelist (Telegram user IDs), and agentHome (existing folder), then restart.`,
     );
   }
-  const raw = JSON.parse(readFileSync(configPath, 'utf8'));
+  let raw: any;
+  try {
+    raw = JSON.parse(readFileSync(configPath, 'utf8'));
+  } catch (e) {
+    throw new ConfigError(`config: ${configPath} is not valid JSON — fix it or delete it to regenerate the template (${e instanceof SyntaxError ? e.message : String(e)})`);
+  }
   if (!raw.telegramBotToken) throw new ConfigError('config: telegramBotToken is required');
   if (!Array.isArray(raw.whitelist) || raw.whitelist.length === 0 || !raw.whitelist.every((n: unknown) => Number.isInteger(n))) {
     throw new ConfigError('config: whitelist must be a non-empty array of Telegram user IDs');
@@ -46,8 +55,7 @@ export function loadConfig(configPath: string): Config {
     throw new ConfigError('config: agentHome must point to an existing directory — create it first (it is user-provided)');
   }
   return {
-    approvalTimeoutMs: 900_000,
-    bashAllowlist: DEFAULT_BASH_ALLOWLIST,
+    ...DEFAULTS,
     ...raw,
     claudeOauthToken: raw.claudeOauthToken || undefined,
   };

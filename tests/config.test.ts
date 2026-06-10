@@ -45,4 +45,10 @@ describe('loadConfig', () => {
     expect(cfg.approvalTimeoutMs).toBe(900_000);
     expect(cfg.bashAllowlist.length).toBeGreaterThan(0);
   });
+
+  it('reports corrupt JSON as an actionable ConfigError', () => {
+    const cfgPath = join(root, 'config.json');
+    writeFileSync(cfgPath, '{ not json');
+    expect(() => loadConfig(cfgPath)).toThrow(/not valid JSON/);
+  });
 });
