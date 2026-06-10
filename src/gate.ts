@@ -18,7 +18,7 @@ export class PermissionGate {
     const rendered = renderInput(input);
     if (this.policy.isSafe(toolName, input)) {
       this.store.createApproval(task.id, toolName, rendered, 'auto_approved');
-      log.debug('auto-approved', { taskId: task.id, tool: toolName });
+      log.debug('auto-approved', { taskId: task.id, tool: toolName, input: rendered });
       return { behavior: 'allow', updatedInput: input };
     }
     const id = this.store.createApproval(task.id, toolName, rendered, null);
@@ -28,7 +28,7 @@ export class PermissionGate {
       content: `🔐 Approval needed (task #${task.id})\nTool: ${toolName}\n\n${rendered}`,
       replyMarkup: approvalKeyboard(id),
     });
-    log.info('approval requested', { approvalId: id, taskId: task.id, tool: toolName });
+    log.info('approval requested', { approvalId: id, taskId: task.id, tool: toolName, input: rendered });
     const decision = await new Promise<'approved' | 'denied' | 'timeout'>((res) => {
       const timer = setTimeout(() => { this.pending.delete(id); res('timeout'); }, this.timeoutMs);
       this.pending.set(id, (d) => { clearTimeout(timer); this.pending.delete(id); res(d); });

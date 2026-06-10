@@ -1,7 +1,8 @@
 import type { Store } from './store.js';
 import { logger } from './log.js';
+import { truncate } from './util.js';
 
-const log = logger('gateway');
+const log = logger('intake');
 
 export function intakeMessage(
   store: Store,
@@ -11,7 +12,7 @@ export function intakeMessage(
     log.warn('duplicate update ignored', { updateId: u.updateId });
     return { queued: false };
   }
-  log.info('message received', { updateId: u.updateId, userId: u.userId, chatId: u.chatId, chars: u.text.length });
+  log.info('message received', { updateId: u.updateId, userId: u.userId, chatId: u.chatId, text: truncate(u.text, 2000) });
   const taskId = store.enqueueTask({ source: 'telegram', kind: 'chat', userId: u.userId, chatId: u.chatId, prompt: u.text });
   store.markProcessed(u.updateId);
   log.info('task queued', { taskId });

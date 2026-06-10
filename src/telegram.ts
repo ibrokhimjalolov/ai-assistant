@@ -8,7 +8,7 @@ import { intakeMessage } from './intake.js';
 import { statusText, queueText, newConversation, schedulesText } from './commands.js';
 import { logger } from './log.js';
 
-const log = logger('gateway');
+const log = logger('telegram');
 
 export function whitelistMiddleware(whitelist: number[]) {
   return async (ctx: Context, next: NextFunction): Promise<void> => {

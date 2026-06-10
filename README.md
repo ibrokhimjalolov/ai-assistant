@@ -41,6 +41,8 @@ captured to `~/Library/Application Support/agent-runtime/logs/agent-runtime.log`
 print to the terminal. Set `LOG_LEVEL=debug` for verbose output or `LOG_LEVEL=warn`
 to quiet it down (default `info`).
 
+Logs include message text, schedule prompts, and tool inputs so you can see exactly what was asked and done — they never include the Telegram bot token or Claude OAuth token. Treat the log files as sensitive (they contain your conversation content).
+
 ## Chat commands
 
 `/status` uptime+queue · `/queue` pending tasks · `/cancel` abort your running

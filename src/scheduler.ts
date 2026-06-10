@@ -1,6 +1,7 @@
 import parser from 'cron-parser';
 import type { Store } from './store.js';
 import { logger } from './log.js';
+import { truncate } from './util.js';
 
 const log = logger('scheduler');
 
@@ -17,7 +18,7 @@ export class Scheduler {
         this.store.enqueueTask({
           source: 'schedule', kind: 'chat', userId: s.createdByUserId, chatId: s.chatId, prompt: s.prompt,
         });
-        log.info('schedule fired', { scheduleId: s.id, prompt: s.prompt });
+        log.info('schedule fired', { scheduleId: s.id, prompt: truncate(s.prompt, 2000) });
       }
     }
   }
