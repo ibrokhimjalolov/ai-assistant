@@ -24,6 +24,15 @@ describe('Policy.isSafe', () => {
     expect(policy.isSafe('Bash', { command: 'git status && rm -rf /' })).toBe(false);
   });
 
+  it('rejects bash bypasses: newline, redirection, substitution', () => {
+    expect(policy.isSafe('Bash', { command: 'git status\nrm -rf /' })).toBe(false);
+    expect(policy.isSafe('Bash', { command: 'git status\r\nrm -rf /' })).toBe(false);
+    expect(policy.isSafe('Bash', { command: 'git status > /Users/me/.zshrc' })).toBe(false);
+    expect(policy.isSafe('Bash', { command: 'cat /etc/passwd > /tmp/x' })).toBe(false);
+    expect(policy.isSafe('Bash', { command: 'ls $(whoami)' })).toBe(false);
+    expect(policy.isSafe('Bash', { command: 'ls `whoami`' })).toBe(false);
+  });
+
   it('allows runtime MCP tools; denies unknown tools by default', () => {
     expect(policy.isSafe('mcp__runtime__schedule_create', { cron: '* * * * *' })).toBe(true);
     expect(policy.isSafe('SomeNewTool', {})).toBe(false);

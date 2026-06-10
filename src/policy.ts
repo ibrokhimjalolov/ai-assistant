@@ -22,8 +22,10 @@ export class Policy {
     }
     if (toolName === 'Bash') {
       const cmd = String(input.command ?? '');
-      // shell chaining escapes the allowlisted prefix — reject compound commands
-      if (/[;&|`$(]/.test(cmd)) return false;
+      // Any of these let a command escape the allowlisted prefix:
+      // ; & | ` $ ( ) chaining/substitution, < > redirection, and newlines
+      // (a newline after an allowlisted prefix smuggles a second command).
+      if (/[;&|`$(){}<>\n\r]/.test(cmd)) return false;
       return this.bashAllowlist.some((r) => r.test(cmd));
     }
     return false;
