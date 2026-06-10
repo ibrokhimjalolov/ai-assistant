@@ -49,6 +49,10 @@ async function main(): Promise<void> {
   const sender = new Sender(store, new GrammyTelegramApi(bot.api));
   const scheduler = new Scheduler(store);
 
+  const recovered = recoverInterrupted(store);
+  if (recovered.length) console.log(`[startup] recovered ${recovered.length} interrupted task(s)`);
+  scheduler.startupCatchup();
+
   try {
     const me = await bot.api.getMe();
     console.log(`[startup] telegram ok (@${me.username})`);
@@ -57,15 +61,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const recovered = recoverInterrupted(store);
-  if (recovered.length) console.log(`[startup] recovered ${recovered.length} interrupted task(s)`);
-  scheduler.startupCatchup();
-
   let draining = false;
   setInterval(async () => {
     if (draining) return;
     draining = true;
-    try { await sender.drainOnce(); } finally { draining = false; }
+    try { await sender.drainOnce(); } catch (e) { console.error('[drain]', e); } finally { draining = false; }
   }, 2000);
 
   setInterval(() => {
