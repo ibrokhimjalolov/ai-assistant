@@ -187,6 +187,20 @@ person-specific facts to the person they belong to.
   require the requesting user's button press, and the approval message shows exactly what will
   run. This risk is why approval mode was chosen over full autonomy.
 - **Audit:** `approvals` + `tasks` form a complete, queryable action history.
+- **Known v1-accepted risks (auto-approve path).** The permission policy auto-approves
+  some tools without a button press; a security review of the implementation flagged
+  these residual gaps as acceptable for v1 but to be revisited before any
+  production/multi-user deploy:
+  - *Read → WebFetch exfiltration.* `Read` (any path, incl. `~/.ssh/id_rsa`) and
+    `WebFetch` are both auto-approved. Prompt-injected content could chain them to
+    encode secrets into an outbound URL with no human in the loop. Mitigation when
+    needed: route `WebFetch` to approval, or allowlist fetch domains.
+  - *Symlink escape from Agent Home.* The file-edit sandbox uses a lexical
+    `resolve`/`relative` check, which does not follow symlinks; a pre-existing symlink
+    inside the Agent Home pointing outside would let an auto-approved edit land
+    outside. Mitigation when needed: switch to `fs.realpathSync` on the parent dir.
+  - Bash command chaining/redirection/newline-smuggling on the auto-approve path is
+    closed (rejected metacharacters include `; & | \` $ ( ) { } < >` and CR/LF).
 
 ## 7. Fault tolerance
 
