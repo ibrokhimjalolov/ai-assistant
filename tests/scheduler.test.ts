@@ -55,3 +55,28 @@ describe('Scheduler.startupCatchup', () => {
     expect(store.pendingTasks()).toHaveLength(1);
   });
 });
+
+describe('Scheduler one-shot reminders', () => {
+  it('fires a due one-shot exactly once then disables it', () => {
+    const id = store.createReminder({ runAt: '2026-06-10T08:00:00', prompt: 'sleep', createdByUserId: 7, chatId: 70 });
+    sched.tick(new Date('2026-06-10T08:00:10'));
+    expect(store.pendingTasks().filter((t) => t.source === 'schedule')).toHaveLength(1);
+    sched.tick(new Date('2026-06-10T08:01:00')); // must not fire again
+    expect(store.pendingTasks().filter((t) => t.source === 'schedule')).toHaveLength(1);
+    expect(store.enabledSchedules().some((x) => x.id === id)).toBe(false);
+  });
+
+  it('does not fire a one-shot before its time', () => {
+    store.createReminder({ runAt: '2026-06-10T08:00:00', prompt: 'x', createdByUserId: 7, chatId: 70 });
+    sched.tick(new Date('2026-06-10T07:59:00'));
+    expect(store.pendingTasks()).toHaveLength(0);
+  });
+
+  it('skip-policy one-shot missed during downtime is disabled without firing', () => {
+    const id = store.createReminder({ runAt: '2026-06-10T08:00:00', prompt: 'x', missedPolicy: 'skip', createdByUserId: 7, chatId: 70 });
+    sched.startupCatchup(new Date('2026-06-10T12:00:00'));
+    sched.tick(new Date('2026-06-10T12:00:10'));
+    expect(store.pendingTasks()).toHaveLength(0);
+    expect(store.enabledSchedules().some((x) => x.id === id)).toBe(false);
+  });
+});

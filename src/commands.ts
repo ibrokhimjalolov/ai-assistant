@@ -30,6 +30,8 @@ export function schedulesText(store: Store): string {
   const all = store.listSchedules();
   if (all.length === 0) return 'No schedules. Ask me to create one, e.g. "every morning at 8 summarize my email".';
   return all
-    .map((s) => `#${s.id} [${s.cronExpr}] ${truncate(s.prompt, 60)} (${s.missedPolicy}${s.enabled ? '' : ', disabled'})`)
+    .map((s) => s.runAt
+      ? `#${s.id} once@${s.runAt} ${truncate(s.prompt, 50)}${s.enabled ? '' : ' (done)'}`
+      : `#${s.id} [${s.cronExpr}] ${truncate(s.prompt, 60)} (${s.missedPolicy}${s.enabled ? '' : ', disabled'})`)
     .join('\n');
 }

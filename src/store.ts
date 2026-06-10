@@ -172,10 +172,23 @@ export class Store {
   createSchedule(s: { cronExpr: string; prompt: string; missedPolicy: 'run_now' | 'skip'; createdByUserId: number; chatId: number }): number {
     const r = this.db
       .prepare(
-        `INSERT INTO schedules (cron_expr, prompt, missed_policy, created_by_user_id, chat_id) VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO schedules (cron_expr, run_at, prompt, missed_policy, created_by_user_id, chat_id) VALUES (?, NULL, ?, ?, ?, ?)`,
       )
       .run(s.cronExpr, s.prompt, s.missedPolicy, s.createdByUserId, s.chatId);
     return Number(r.lastInsertRowid);
+  }
+
+  createReminder(r: { runAt: string; prompt: string; missedPolicy?: 'run_now' | 'skip'; createdByUserId: number; chatId: number }): number {
+    const result = this.db
+      .prepare(
+        `INSERT INTO schedules (cron_expr, run_at, prompt, missed_policy, created_by_user_id, chat_id) VALUES (NULL, ?, ?, ?, ?, ?)`,
+      )
+      .run(r.runAt, r.prompt, r.missedPolicy ?? 'run_now', r.createdByUserId, r.chatId);
+    return Number(result.lastInsertRowid);
+  }
+
+  disableSchedule(id: number): void {
+    this.db.prepare(`UPDATE schedules SET enabled = 0 WHERE id = ?`).run(id);
   }
 
   listSchedules(): Schedule[] {
@@ -224,7 +237,8 @@ function toTask(row: any): Task {
 function toSchedule(row: any): Schedule {
   return {
     id: row.id,
-    cronExpr: row.cron_expr,
+    cronExpr: row.cron_expr ?? null,
+    runAt: row.run_at ?? null,
     prompt: row.prompt,
     enabled: row.enabled === 1,
     missedPolicy: row.missed_policy,

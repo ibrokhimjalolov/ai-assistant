@@ -61,6 +61,15 @@ describe('schedules', () => {
     store.deleteSchedule(id);
     expect(store.listSchedules()).toHaveLength(0);
   });
+
+  it('creates a one-shot reminder and disables it', () => {
+    const id = store.createReminder({ runAt: '2026-06-11T10:00:00.000Z', prompt: 'sleep', createdByUserId: 7, chatId: 70 });
+    const s = store.enabledSchedules().find((x) => x.id === id)!;
+    expect(s.runAt).toBe('2026-06-11T10:00:00.000Z');
+    expect(s.cronExpr).toBeNull();
+    store.disableSchedule(id);
+    expect(store.enabledSchedules().some((x) => x.id === id)).toBe(false);
+  });
 });
 
 describe('meta', () => {

@@ -30,13 +30,15 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE TABLE IF NOT EXISTS schedules (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  cron_expr TEXT NOT NULL,
+  cron_expr TEXT,
+  run_at TEXT,
   prompt TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   missed_policy TEXT NOT NULL DEFAULT 'run_now' CHECK (missed_policy IN ('run_now','skip')),
   created_by_user_id INTEGER NOT NULL,
   chat_id INTEGER NOT NULL,
-  last_run_at TEXT
+  last_run_at TEXT,
+  CHECK ((cron_expr IS NOT NULL) <> (run_at IS NOT NULL))
 );
 CREATE TABLE IF NOT EXISTS approvals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,6 +68,32 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 `;
 
+function migrateSchedules(db: Database.Database): void {
+  const cols = db.pragma('table_info(schedules)') as Array<{ name: string }>;
+  if (cols.some((c) => c.name === 'run_at')) return; // already new shape
+  // Old shape (cron_expr NOT NULL, no run_at). Rebuild to add run_at + nullable cron_expr + CHECK.
+  db.exec(`
+    BEGIN;
+    CREATE TABLE schedules_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cron_expr TEXT,
+      run_at TEXT,
+      prompt TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      missed_policy TEXT NOT NULL DEFAULT 'run_now' CHECK (missed_policy IN ('run_now','skip')),
+      created_by_user_id INTEGER NOT NULL,
+      chat_id INTEGER NOT NULL,
+      last_run_at TEXT,
+      CHECK ((cron_expr IS NOT NULL) <> (run_at IS NOT NULL))
+    );
+    INSERT INTO schedules_new (id, cron_expr, run_at, prompt, enabled, missed_policy, created_by_user_id, chat_id, last_run_at)
+      SELECT id, cron_expr, NULL, prompt, enabled, missed_policy, created_by_user_id, chat_id, last_run_at FROM schedules;
+    DROP TABLE schedules;
+    ALTER TABLE schedules_new RENAME TO schedules;
+    COMMIT;
+  `);
+}
+
 export function openDb(path: string): Database.Database {
   const db = new Database(path);
   // ':memory:' databases always report 'memory'; file DBs must actually get WAL
@@ -75,5 +103,6 @@ export function openDb(path: string): Database.Database {
   }
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  migrateSchedules(db);
   return db;
 }

@@ -29,7 +29,8 @@ export interface OutMessage {
 
 export interface Schedule {
   id: number;
-  cronExpr: string;
+  cronExpr: string | null;
+  runAt: string | null;
   prompt: string;
   enabled: boolean;
   missedPolicy: 'run_now' | 'skip';
