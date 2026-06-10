@@ -43,14 +43,14 @@ that message their creator proactively.
 
 ## 4. Architecture
 
-One Python daemon process, supervised by launchd. Five internal units communicate
+One Node.js daemon process, supervised by launchd. Five internal units communicate
 through SQLite (the single source of durable truth) and in-process interfaces.
 
 ```
 Telegram Bot API
       ↑↓ long polling
 ┌─────────────────────────────────────────────────────┐
-│ agent-runtime (Python daemon, launchd-supervised)    │
+│ agent-runtime (Node.js daemon, launchd-supervised)   │
 │                                                      │
 │  Telegram Gateway ──► SQLite (WAL)  ◄── Scheduler    │
 │        ▲              inbox/tasks/sessions/          │
@@ -58,27 +58,38 @@ Telegram Bot API
 │        │                   ▲                         │
 │        │                   │                         │
 │  Permission Gate ◄──── Agent Worker                  │
-│   (can_use_tool)           │                         │
+│   (canUseTool)             │                         │
 │                            ▼                         │
 │              Claude Agent SDK ──► local Claude Code  │
 │                                   (subscription auth)│
 └─────────────────────────────────────────────────────┘
-                            │
-                  ~/AgentHome/ (CLAUDE.md, memory/)
+            │                              │
+   Agent Home (user-provided)     App Data (automatic)
+   CLAUDE.md, memory/, files      DB, logs, config
 ```
 
 ### 4.1 Stack
 
 | Concern | Choice | Why |
 |---|---|---|
-| Language | Python 3.12+ | Owner had no preference; mature ecosystem for every piece below |
-| Telegram | `python-telegram-bot` v21+ | Long polling, inline keyboards, built-in JobQueue usable for the scheduler |
-| Claude | `claude-agent-sdk` | Spawns the locally installed Claude Code; supports `resume`, `can_use_tool`, custom in-process MCP tools |
-| Storage | SQLite (WAL mode), via `aiosqlite` | Durable, zero-ops, single file, safe with one writer process |
-| Cron parsing | `croniter` | Standard cron expressions for schedules |
+| Language | TypeScript on Node.js 22 LTS | Claude Agent SDK's reference implementation is TypeScript (Claude Code itself is TS) — newest SDK features land there first; types pay off in the permission gate and SDK event handling |
+| Telegram | `grammY` | Long polling, inline keyboards, first-class TypeScript support |
+| Claude | `@anthropic-ai/claude-agent-sdk` | Drives the locally installed Claude Code; supports `resume`, `canUseTool`, custom in-process MCP tools |
+| Storage | SQLite (WAL mode), via `better-sqlite3` | Durable, zero-ops, single file, synchronous API is safe with one writer process |
+| Cron parsing | `cron-parser` | Standard cron expressions, evaluated by a one-minute tick |
 | Supervision | macOS launchd LaunchAgent | `KeepAlive` + `RunAtLoad`; no extra supervisor dependency |
 
-### 4.2 Components
+### 4.2 Storage layout — two folders
+
+| Folder | Provided by | Contents |
+|---|---|---|
+| **Agent Home** — path set in config, e.g. `~/AgentHome/` | **The user.** Created/chosen by the user; the runtime never relocates it. If it exists but is empty, the runtime scaffolds template files on first run. | Claude-facing files: `CLAUDE.md` (persona + standing instructions), `memory/` (long-term facts), any project files the agent works on. The Worker runs Claude sessions with this folder as `cwd`. |
+| **App Data** — `~/Library/Application Support/agent-runtime/` | **The runtime, automatically** on first start. | App-internal state: `agent.db` (SQLite), `logs/`, `config.json` (bot token, whitelist, Agent Home path, optional `CLAUDE_CODE_OAUTH_TOKEN`). A config template is generated on first run for the user to fill in. |
+
+The startup self-check verifies both folders: App Data is created if missing;
+a missing or unconfigured Agent Home is a fatal, clearly-reported error.
+
+### 4.3 Components
 
 **Telegram Gateway**
 - Long-polls `getUpdates`. No webhook, no inbound ports.
@@ -110,7 +121,8 @@ Telegram Bot API
 
 **Agent Worker**
 - Single sequential loop: claim oldest `queued` task → mark `running` → call SDK
-  `query()` with `resume=<claude_session_id>` and `cwd=~/AgentHome` → stream events.
+  `query()` with `resume=<claude_session_id>` and `cwd=<Agent Home>` → stream
+  events.
 - Streams progress to Telegram by editing a single status message (edits don't ping
   the user's phone); sends the final answer as a new message (which does ping).
 - Messages arriving mid-task simply queue as new tasks (FIFO). `/cancel` interrupts
@@ -119,11 +131,11 @@ Telegram Bot API
   via the SDK's in-process MCP server.
 
 **Permission Gate**
-- Implements the SDK's `can_use_tool` callback. Decision order:
-  1. Tool/input matches the safe policy (read-only tools; file edits under
-     `~/AgentHome`; shell commands matching allowlist patterns defined in a config
-     file shipped with conservative defaults such as `git status`, `ls`, `grep`)
-     → auto-approve.
+- Implements the SDK's `canUseTool` callback. Decision order:
+  1. Tool/input matches the safe policy (read-only tools; file edits under the
+     Agent Home; shell commands matching allowlist patterns defined in
+     `config.json`, shipped with conservative defaults such as `git status`, `ls`,
+     `grep`) → auto-approve.
   2. Tool/input matches the hard-deny policy (nothing in v1; reserved) → deny.
   3. Everything else → write `approvals` row, send a Telegram message to the chat
      of the user whose task triggered it, showing the exact tool and rendered input
@@ -134,7 +146,7 @@ Telegram Bot API
 - Every decision (including auto-approvals) is recorded in `approvals`.
 
 **Scheduler**
-- Tick loop (via PTB JobQueue) checks `schedules` each minute against `croniter`.
+- A one-minute tick checks `schedules` against `cron-parser`.
 - A due job enqueues an ordinary task with `source=schedule`; output is delivered as
   a proactive Telegram message to the job creator's chat.
 - On startup, jobs whose fire time passed during downtime are handled per their
@@ -147,7 +159,7 @@ Telegram Bot API
 
 | Layer | Mechanism | Survives |
 |---|---|---|
-| Long-term facts & preferences | `~/AgentHome/CLAUDE.md` (persona + standing instructions) and `~/AgentHome/memory/` (small markdown fact files + index). Standing instructions direct the agent to record durable facts as it learns them and consult memory at session start. | Everything — crashes, conversation rotation, reinstalls |
+| Long-term facts & preferences | `CLAUDE.md` (persona + standing instructions) and `memory/` (small markdown fact files + index) in the user-provided Agent Home. Standing instructions direct the agent to record durable facts as it learns them and consult memory at session start. | Everything — crashes, conversation rotation, reinstalls |
 | Conversation continuity | One Claude session ID per whitelisted user, stored in `sessions`. Each user's messages resume their own session; users never share a conversation. Long conversations rely on Claude Code's built-in compaction. | Process restarts, reboots |
 | Task state & history | `tasks` table with prompts, statuses, result summaries. | Everything |
 
@@ -155,7 +167,7 @@ Conversation rotation: `/new` asks the user's current session to summarize durab
 facts into `memory/`, then creates a fresh session for that user. The memory layer
 is what carries identity across rotations.
 
-Long-term memory (`~/AgentHome/`) is shared: there is one agent with one knowledge
+Long-term memory (the Agent Home) is shared: there is one agent with one knowledge
 base, serving all whitelisted users. Standing instructions tell it to attribute
 person-specific facts to the person they belong to.
 
@@ -167,9 +179,8 @@ person-specific facts to the person they belong to.
   list effectively has full control of the machine, so the list should stay short
   and trusted.
 - **Secrets:** bot token and `CLAUDE_CODE_OAUTH_TOKEN` (if used instead of the CLI's
-  keychain login) live in a `chmod 600` env file referenced by the launchd plist.
-  Never in code, the DB, or logs. Migration to macOS Keychain is a later hardening
-  step.
+  keychain login) live in `config.json` in App Data, `chmod 600`. Never in code,
+  the DB, or logs. Migration to macOS Keychain is a later hardening step.
 - **Attack surface:** none inbound — long polling only.
 - **Prompt injection:** the agent reads untrusted content (web pages, emails) with
   full machine capabilities. The Permission Gate is the backstop: risky actions
@@ -187,17 +198,20 @@ person-specific facts to the person they belong to.
 | Claude session failure (corrupt resume, SDK error) | Retry once. If still failing: start a fresh session pre-loaded with memory, note to the agent and the affected user that prior in-conversation context was lost. |
 | Approval unanswered | 15-minute timeout → deny; requesting user notified. |
 | Scheduled job missed during downtime | Per-job `missed_policy`: `run_now` (default) or `skip`. |
-| SQLite corruption | WAL mode + single writer makes this unlikely; additionally the runtime itself performs a daily file-copy backup of the DB and `~/AgentHome` to a local backups folder (a built-in scheduler job). |
+| SQLite corruption | WAL mode + single writer makes this unlikely; additionally the runtime itself performs a daily file-copy backup of the DB and the Agent Home folder to a local backups folder in App Data (a built-in scheduler job). |
 
 ## 8. Operations
 
 - **Install:** launchd LaunchAgent plist (`~/Library/LaunchAgents/`) with
-  `KeepAlive=true`, `RunAtLoad=true`, env file path, rotating file logs.
+  `KeepAlive=true`, `RunAtLoad=true`, pointing at the Node entrypoint; logs rotate
+  in App Data. First start creates App Data and a `config.json` template; the user
+  fills in bot token, whitelist, and the Agent Home path, then restarts.
 - **Keep-awake requirement:** the Mac must not sleep. Setup includes
   `sudo pmset -a sleep 0 displaysleep 10` (or equivalent) documented in the README.
-- **Prerequisites:** Claude Code installed and logged in with the owner's
-  subscription (`claude login`, or `claude setup-token` → `CLAUDE_CODE_OAUTH_TOKEN`
-  in the env file); a Telegram bot created via @BotFather.
+- **Prerequisites:** Node.js 22+; Claude Code installed and logged in with the
+  owner's subscription (`claude login`, or `claude setup-token` →
+  `CLAUDE_CODE_OAUTH_TOKEN` in `config.json`); a Telegram bot created via
+  @BotFather; an Agent Home folder created by the user.
 - **Observability:** `/status` command; rotating logs; startup self-check that
   verifies Telegram auth, Claude auth, and DB health, reporting failures to all
   whitelisted users' chats if Telegram is reachable.
@@ -222,7 +236,7 @@ real Claude:
 1. Skeleton daemon + Gateway + SQLite inbox/outbox + user whitelist + `/status`.
 2. Agent Worker with session resume; basic chat working end-to-end.
 3. Permission Gate with Telegram approval round-trip.
-4. Memory home (`CLAUDE.md`, `memory/`), `/new` rotation.
+4. Agent Home scaffolding (`CLAUDE.md`, `memory/` templates), `/new` rotation.
 5. Crash recovery + launchd packaging + usage-limit handling.
 6. Scheduler + custom schedule tools + proactive messages.
 7. Test suite + smoke checklist + README (install, pmset, BotFather, claude login).
