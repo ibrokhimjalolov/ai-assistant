@@ -2,6 +2,9 @@ import type { Store } from './store.js';
 import type { PermissionGate } from './gate.js';
 import { UsageLimitError, type ClaudeRunner, type Task } from './types.js';
 import { fmtTime, truncate } from './util.js';
+import { logger } from './log.js';
+
+const log = logger('worker');
 
 export interface WorkerDeps {
   store: Store;
@@ -40,6 +43,7 @@ export class Worker {
   private async process(task: Task): Promise<void> {
     const abort = new AbortController();
     this.current = { task, abort };
+    log.info('task claimed', { id: task.id, userId: task.userId, kind: task.kind, source: task.source });
     try {
       const final = await this.runOnce(task, abort.signal, true);
       this.complete(task, final, null);
@@ -47,6 +51,7 @@ export class Worker {
       if (abort.signal.aborted) {
         this.d.store.finishTask(task.id, 'cancelled');
         this.d.store.enqueueMessage({ chatId: task.chatId, content: '🛑 Task cancelled.' });
+        log.info('task cancelled', { id: task.id });
       } else if (e instanceof UsageLimitError) {
         this.pausedUntil = e.resetAt ?? new Date(Date.now() + 30 * 60_000);
         this.d.store.requeueTask(task.id);
@@ -54,6 +59,7 @@ export class Worker {
           chatId: task.chatId,
           content: `⚠️ Subscription usage limit reached — your task is paused and will resume around ${fmtTime(this.pausedUntil)}.`,
         });
+        log.warn('usage limit — pausing', { id: task.id, resumeAt: this.pausedUntil?.toISOString() });
       } else {
         await this.retryFresh(task, abort, e);
       }
@@ -66,8 +72,10 @@ export class Worker {
     if (abort.signal.aborted) {
       this.d.store.finishTask(task.id, 'cancelled');
       this.d.store.enqueueMessage({ chatId: task.chatId, content: '🛑 Task cancelled.' });
+      log.info('task cancelled', { id: task.id });
       return;
     }
+    log.warn('retrying with fresh session', { id: task.id });
     try {
       const final = await this.runOnce(task, abort.signal, false);
       this.complete(task, final, '⚠️ Previous conversation context was lost due to a session error.');
@@ -75,6 +83,7 @@ export class Worker {
       const err = e2 ?? firstError;
       this.d.store.finishTask(task.id, 'failed', truncate(String(err), 500));
       this.d.store.enqueueMessage({ chatId: task.chatId, content: `❌ Task failed: ${truncate(String(err), 300)}` });
+      log.error('task failed', { id: task.id, error: String(err) });
     }
   }
 
@@ -83,6 +92,7 @@ export class Worker {
     this.d.store.enqueueMessage({ chatId: task.chatId, content });
     this.d.store.finishTask(task.id, 'done', truncate(final, 500));
     if (task.kind === 'rotate') this.d.store.rotateSession(task.userId);
+    log.info('task done', { id: task.id });
   }
 
   private effectivePrompt(task: Task): string {
@@ -106,6 +116,7 @@ export class Worker {
       if (ev.kind === 'session') {
         this.d.store.setSession(task.userId, ev.sessionId);
         this.d.store.attachSession(task.id, ev.sessionId);
+        log.debug('session attached', { taskId: task.id, sessionId: ev.sessionId });
         // progress events are intentionally ignored — the Telegram typing indicator signals activity
       } else if (ev.kind === 'final') {
         final = ev.text;

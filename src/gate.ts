@@ -1,6 +1,9 @@
 import type { Store } from './store.js';
 import type { Policy } from './policy.js';
 import type { CanUseTool, PermissionResult, Task } from './types.js';
+import { logger } from './log.js';
+
+const log = logger('gate');
 
 export class PermissionGate {
   private pending = new Map<number, (d: 'approved' | 'denied') => void>();
@@ -15,6 +18,7 @@ export class PermissionGate {
     const rendered = renderInput(input);
     if (this.policy.isSafe(toolName, input)) {
       this.store.createApproval(task.id, toolName, rendered, 'auto_approved');
+      log.debug('auto-approved', { taskId: task.id, tool: toolName });
       return { behavior: 'allow', updatedInput: input };
     }
     const id = this.store.createApproval(task.id, toolName, rendered, null);
@@ -24,11 +28,13 @@ export class PermissionGate {
       content: `🔐 Approval needed (task #${task.id})\nTool: ${toolName}\n\n${rendered}`,
       replyMarkup: approvalKeyboard(id),
     });
+    log.info('approval requested', { approvalId: id, taskId: task.id, tool: toolName });
     const decision = await new Promise<'approved' | 'denied' | 'timeout'>((res) => {
       const timer = setTimeout(() => { this.pending.delete(id); res('timeout'); }, this.timeoutMs);
       this.pending.set(id, (d) => { clearTimeout(timer); this.pending.delete(id); res(d); });
     });
     this.store.decideApproval(id, decision);
+    log.info('approval decided', { approvalId: id, decision });
     if (decision === 'approved') return { behavior: 'allow', updatedInput: input };
     return {
       behavior: 'deny',

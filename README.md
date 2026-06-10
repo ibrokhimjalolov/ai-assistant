@@ -32,6 +32,15 @@ First start writes a config template to
 
 Then restart: `launchctl kickstart -k gui/$(id -u)/uz.domo.agent-runtime`
 
+## Logs
+
+The runtime logs every significant event (messages, task lifecycle, approvals,
+sends, schedules, backups, errors) to stdout/stderr. Under launchd these are
+captured to `~/Library/Application Support/agent-runtime/logs/agent-runtime.log`
+(info/debug) and `agent-runtime.err.log` (warn/error). In `npm run dev` they
+print to the terminal. Set `LOG_LEVEL=debug` for verbose output or `LOG_LEVEL=warn`
+to quiet it down (default `info`).
+
 ## Chat commands
 
 `/status` uptime+queue · `/queue` pending tasks · `/cancel` abort your running

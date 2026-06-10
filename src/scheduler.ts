@@ -1,5 +1,8 @@
 import parser from 'cron-parser';
 import type { Store } from './store.js';
+import { logger } from './log.js';
+
+const log = logger('scheduler');
 
 export class Scheduler {
   constructor(private store: Store) {}
@@ -14,6 +17,7 @@ export class Scheduler {
         this.store.enqueueTask({
           source: 'schedule', kind: 'chat', userId: s.createdByUserId, chatId: s.chatId, prompt: s.prompt,
         });
+        log.info('schedule fired', { scheduleId: s.id, prompt: s.prompt });
       }
     }
   }
@@ -23,7 +27,10 @@ export class Scheduler {
     for (const s of this.store.enabledSchedules()) {
       if (s.missedPolicy !== 'skip' || !s.lastRunAt) continue;
       const next = parser.parseExpression(s.cronExpr, { currentDate: new Date(s.lastRunAt) }).next().toDate();
-      if (next <= now) this.store.markScheduleRun(s.id, now);
+      if (next <= now) {
+        this.store.markScheduleRun(s.id, now);
+        log.info('schedule catch-up skipped missed run', { scheduleId: s.id });
+      }
     }
   }
 }

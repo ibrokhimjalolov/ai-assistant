@@ -6,12 +6,15 @@ import type { Worker } from './worker.js';
 import type { TelegramApi } from './sender.js';
 import { intakeMessage } from './intake.js';
 import { statusText, queueText, newConversation, schedulesText } from './commands.js';
+import { logger } from './log.js';
+
+const log = logger('gateway');
 
 export function whitelistMiddleware(whitelist: number[]) {
   return async (ctx: Context, next: NextFunction): Promise<void> => {
     const id = ctx.from?.id;
     if (!id || !whitelist.includes(id)) {
-      console.warn(`[gateway] dropped update from non-whitelisted sender ${id ?? 'unknown'}`);
+      log.warn('dropped non-whitelisted sender', { senderId: id ?? null });
       return;
     }
     await next();
@@ -27,17 +30,22 @@ export async function handleApprovalCallback(
   const approval = store.getApproval(approvalId);
   const task = approval ? store.getTask(approval.taskId) : undefined;
   if (!task || task.userId !== ctx.from?.id) {
+    log.warn('approval callback rejected: not owner', { approvalId, from: ctx.from?.id });
     await ctx.answerCallbackQuery({ text: 'Not your approval' });
     return;
   }
   const ok = gate.resolve(approvalId, ctx.match[2] === 'y' ? 'approved' : 'denied');
+  log.info('approval callback', { approvalId, decision: ctx.match[2] === 'y' ? 'approved' : 'denied', ok });
   await ctx.answerCallbackQuery({ text: ok ? 'Recorded ✓' : 'Already decided or expired' });
   await ctx.editMessageReplyMarkup(undefined).catch(() => {});
 }
 
 export async function handleResumeCallback(store: Store, ctx: Context & { match: RegExpMatchArray }): Promise<void> {
-  const t = store.getTask(Number(ctx.match[1]));
-  if (t && t.status === 'interrupted' && t.userId === ctx.from?.id) {
+  const taskId = Number(ctx.match[1]);
+  const t = store.getTask(taskId);
+  const resumable = !!(t && t.status === 'interrupted' && t.userId === ctx.from?.id);
+  log.info('resume callback', { taskId, resumable });
+  if (resumable && t) {
     store.enqueueTask({
       source: 'telegram', kind: 'resume', userId: t.userId, chatId: t.chatId,
       prompt: 'Continue where you left off on the interrupted task.',
@@ -78,7 +86,7 @@ export function buildBot(cfg: Config, d: BotDeps): Bot {
     });
   });
 
-  bot.catch((err) => console.error('[gateway] bot error', err.error));
+  bot.catch((err) => log.error('bot error', { error: String(err.error) }));
   return bot;
 }
 

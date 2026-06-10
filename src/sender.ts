@@ -1,4 +1,7 @@
 import type { Store } from './store.js';
+import { logger } from './log.js';
+
+const log = logger('sender');
 
 export interface TelegramApi {
   sendMessage(chatId: number, text: string, replyMarkupJson?: string | null): Promise<number>;
@@ -25,12 +28,13 @@ export class Sender {
           const mid = await this.api.sendMessage(m.chatId, m.content, m.replyMarkup);
           this.store.markSent(m.id, mid);
         }
+        log.debug('sent', { id: m.id, chatId: m.chatId, kind: m.kind });
       } catch (e) {
         this.store.bumpAttempts(m.id, now);
         const attempts = m.attempts + 1;
-        console.error(`[sender] message ${m.id} (chat ${m.chatId}) attempt ${attempts} failed:`, e instanceof Error ? e.message : e);
+        log.warn('send failed, will retry', { id: m.id, chatId: m.chatId, attempt: attempts, error: e instanceof Error ? e.message : String(e) });
         if (attempts >= 8) {
-          console.error(`[sender] message ${m.id} permanently dropped after ${attempts} attempts: ${m.content.slice(0, 120)}`);
+          log.error('message permanently dropped', { id: m.id, attempts });
         }
       }
     }

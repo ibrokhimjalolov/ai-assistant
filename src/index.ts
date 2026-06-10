@@ -15,6 +15,9 @@ import { recoverInterrupted } from './recovery.js';
 import { buildBot, GrammyTelegramApi } from './telegram.js';
 import { maybeBackup } from './backup.js';
 import { pulseTyping } from './typing.js';
+import { logger } from './log.js';
+
+const log = logger('runtime');
 
 async function main(): Promise<void> {
   const paths = appPaths();
@@ -25,7 +28,7 @@ async function main(): Promise<void> {
     cfg = loadConfig(paths.configPath);
   } catch (e) {
     if (e instanceof ConfigError) {
-      console.error(`[startup] ${e.message}`);
+      log.error('config error', { message: e.message });
       await tryBroadcastStartupError(paths.configPath, e.message);
       process.exit(1);
     }
@@ -51,15 +54,16 @@ async function main(): Promise<void> {
   const sender = new Sender(store, tgApi);
   const scheduler = new Scheduler(store);
 
+  log.info('starting', { appData: paths.root, agentHome: cfg.agentHome });
   const recovered = recoverInterrupted(store);
-  if (recovered.length) console.log(`[startup] recovered ${recovered.length} interrupted task(s)`);
+  if (recovered.length) log.info('recovered interrupted tasks', { count: recovered.length });
   scheduler.startupCatchup();
 
   try {
     const me = await bot.api.getMe();
-    console.log(`[startup] telegram ok (@${me.username})`);
+    log.info('telegram ok', { username: me.username });
   } catch (e) {
-    console.error('[startup] telegram auth failed:', e);
+    log.error('telegram auth failed', { error: String(e) });
     process.exit(1);
   }
 
@@ -67,7 +71,7 @@ async function main(): Promise<void> {
   setInterval(async () => {
     if (draining) return;
     draining = true;
-    try { await sender.drainOnce(); } catch (e) { console.error('[drain]', e); } finally { draining = false; }
+    try { await sender.drainOnce(); } catch (e) { log.error('drain failed', { error: String(e) }); } finally { draining = false; }
   }, 2000);
 
   setInterval(() => { void pulseTyping(worker, tgApi); }, 4000);
@@ -76,7 +80,7 @@ async function main(): Promise<void> {
     try {
       scheduler.tick();
       maybeBackup(store, db, { dbPath: paths.dbPath, backupsDir: paths.backupsDir, agentHome: cfg.agentHome });
-    } catch (e) { console.error('[scheduler]', e); }
+    } catch (e) { log.error('scheduler tick failed', { error: String(e) }); }
   }, 30_000);
 
   void (async () => {
@@ -85,13 +89,13 @@ async function main(): Promise<void> {
         const worked = await worker.tick();
         if (!worked) await new Promise((r) => setTimeout(r, 1000));
       } catch (e) {
-        console.error('[worker]', e);
+        log.error('worker tick failed', { error: String(e) });
         await new Promise((r) => setTimeout(r, 5000));
       }
     }
   })();
 
-  console.log('[startup] agent-runtime up — long polling');
+  log.info('up — long polling');
   await bot.start();
 }
 
@@ -107,4 +111,4 @@ async function tryBroadcastStartupError(configPath: string, msg: string): Promis
   } catch { /* best effort only */ }
 }
 
-main().catch((e) => { console.error('[fatal]', e); process.exit(1); });
+main().catch((e) => { log.error('fatal', { error: String(e) }); process.exit(1); });
