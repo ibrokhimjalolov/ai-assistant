@@ -1,6 +1,12 @@
 import type { Database } from 'better-sqlite3';
 import type { Decision, OutKind, OutMessage, Schedule, Task, TaskKind, TaskSource, TaskStatus } from './types.js';
 
+/**
+ * Timestamp convention: columns read back into JS for comparisons
+ * (last_attempt_at, last_run_at, sent_at) store ISO-8601 strings written from JS.
+ * Pure audit columns (created_at, received_at, started_at, finished_at,
+ * requested_at, decided_at) use SQLite's datetime('now') defaults.
+ */
 export class Store {
   constructor(private db: Database) {}
 
@@ -102,6 +108,7 @@ export class Store {
   enqueueEdit(editOf: number, content: string): number {
     const ins = this.db.transaction((): number => {
       const orig = this.db.prepare(`SELECT chat_id FROM outbox WHERE id = ?`).get(editOf) as any;
+      if (!orig) throw new Error(`enqueueEdit: no outbox row with id=${editOf}`);
       this.db.prepare(`DELETE FROM outbox WHERE edit_of = ? AND sent_at IS NULL`).run(editOf);
       const r = this.db
         .prepare(`INSERT INTO outbox (chat_id, kind, content, edit_of) VALUES (?, 'edit', ?, ?)`)
@@ -124,8 +131,8 @@ export class Store {
 
   markSent(id: number, telegramMessageId: number): void {
     this.db
-      .prepare(`UPDATE outbox SET sent_at = datetime('now'), message_id = ? WHERE id = ?`)
-      .run(telegramMessageId, id);
+      .prepare(`UPDATE outbox SET sent_at = ?, message_id = ? WHERE id = ?`)
+      .run(new Date().toISOString(), telegramMessageId, id);
   }
 
   bumpAttempts(id: number, at: Date): void {

@@ -28,6 +28,10 @@ describe('outbox', () => {
     for (let i = 0; i < 8; i++) store.bumpAttempts(id, new Date());
     expect(store.unsentMessages()).toEqual([]);
   });
+
+  it('enqueueEdit throws clearly for unknown target', () => {
+    expect(() => store.enqueueEdit(9999, 'x')).toThrow(/no outbox row/);
+  });
 });
 
 describe('approvals', () => {
