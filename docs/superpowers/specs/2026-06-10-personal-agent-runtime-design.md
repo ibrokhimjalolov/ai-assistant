@@ -190,6 +190,14 @@ person-specific facts to the person they belong to.
 
 ## 7. Fault tolerance
 
+**Error-reporting rule:** every system error that affects a user's task or message
+is reported to that user as a human-readable Telegram message through the outbox
+(e.g. "⚠️ Subscription usage limit reached — your task is paused and will resume
+at 18:00"). Errors are never logs-only from the user's point of view; silence is
+reserved for fully transparent recoveries (e.g. a retried poll). If Telegram itself
+is unreachable, the notification waits in the outbox and is delivered on
+reconnection.
+
 | Failure | Behavior |
 |---|---|
 | Process crash / machine reboot | launchd restarts the daemon (`KeepAlive`, `RunAtLoad`). On startup: tasks stuck in `running` → `interrupted`; the task's user gets a Telegram message with a one-tap **Resume** button (re-enters the same session with a continue prompt). Queued tasks are untouched. |
