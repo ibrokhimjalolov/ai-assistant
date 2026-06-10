@@ -24,8 +24,13 @@ export class Sender {
           const mid = await this.api.sendMessage(m.chatId, m.content, m.replyMarkup);
           this.store.markSent(m.id, mid);
         }
-      } catch {
+      } catch (e) {
         this.store.bumpAttempts(m.id, now);
+        const attempts = m.attempts + 1;
+        console.error(`[sender] message ${m.id} (chat ${m.chatId}) attempt ${attempts} failed:`, e instanceof Error ? e.message : e);
+        if (attempts >= 8) {
+          console.error(`[sender] message ${m.id} permanently dropped after ${attempts} attempts: ${m.content.slice(0, 120)}`);
+        }
       }
     }
   }
