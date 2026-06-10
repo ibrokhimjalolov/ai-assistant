@@ -64,11 +64,16 @@ export class Worker {
   }
 
   private async retryFresh(task: Task, abort: AbortController, statusId: number, firstError: unknown): Promise<void> {
+    if (abort.signal.aborted) {
+      this.d.store.finishTask(task.id, 'cancelled');
+      this.d.store.enqueueMessage({ chatId: task.chatId, content: '🛑 Task cancelled.' });
+      return;
+    }
     try {
       const final = await this.runOnce(task, abort.signal, false, statusId);
       this.complete(task, final, '⚠️ Previous conversation context was lost due to a session error.');
     } catch (e2) {
-      const err = e2 instanceof UsageLimitError ? e2 : e2 ?? firstError;
+      const err = e2 ?? firstError;
       this.d.store.finishTask(task.id, 'failed', truncate(String(err), 500));
       this.d.store.enqueueMessage({ chatId: task.chatId, content: `❌ Task failed: ${truncate(String(err), 300)}` });
     }

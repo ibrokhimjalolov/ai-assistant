@@ -114,4 +114,21 @@ describe('Worker', () => {
     expect(aborted).toBe(true);
     expect(store.getTask(id)?.status).toBe('cancelled');
   });
+
+  it('marks cancelled when cancel fires during the first run (before retry)', async () => {
+    const w = makeWorker({
+      async *run(req) {
+        yield { kind: 'session', sessionId: 's' };
+        // wait until cancelled, then throw a NON-abort-looking error
+        await new Promise<void>((res) => req.signal.addEventListener('abort', () => res()));
+        throw new Error('boom after abort');
+      },
+    });
+    const id = enqueueChat();
+    const ticking = w.tick();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(w.cancel(7)).toBe(true);
+    await ticking;
+    expect(store.getTask(id)?.status).toBe('cancelled');
+  });
 });
