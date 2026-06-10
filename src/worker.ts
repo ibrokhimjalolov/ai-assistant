@@ -40,9 +40,8 @@ export class Worker {
   private async process(task: Task): Promise<void> {
     const abort = new AbortController();
     this.current = { task, abort };
-    const statusId = this.d.store.enqueueMessage({ chatId: task.chatId, content: '🤔 Working…' });
     try {
-      const final = await this.runOnce(task, abort.signal, true, statusId);
+      const final = await this.runOnce(task, abort.signal, true);
       this.complete(task, final, null);
     } catch (e) {
       if (abort.signal.aborted) {
@@ -56,21 +55,21 @@ export class Worker {
           content: `⚠️ Subscription usage limit reached — your task is paused and will resume around ${fmtTime(this.pausedUntil)}.`,
         });
       } else {
-        await this.retryFresh(task, abort, statusId, e);
+        await this.retryFresh(task, abort, e);
       }
     } finally {
       this.current = null;
     }
   }
 
-  private async retryFresh(task: Task, abort: AbortController, statusId: number, firstError: unknown): Promise<void> {
+  private async retryFresh(task: Task, abort: AbortController, firstError: unknown): Promise<void> {
     if (abort.signal.aborted) {
       this.d.store.finishTask(task.id, 'cancelled');
       this.d.store.enqueueMessage({ chatId: task.chatId, content: '🛑 Task cancelled.' });
       return;
     }
     try {
-      const final = await this.runOnce(task, abort.signal, false, statusId);
+      const final = await this.runOnce(task, abort.signal, false);
       this.complete(task, final, '⚠️ Previous conversation context was lost due to a session error.');
     } catch (e2) {
       const err = e2 ?? firstError;
@@ -93,7 +92,7 @@ export class Worker {
     return `[Message from Telegram user ${task.userId}]\n\n${task.prompt}`;
   }
 
-  private async runOnce(task: Task, signal: AbortSignal, useResume: boolean, statusId: number): Promise<string> {
+  private async runOnce(task: Task, signal: AbortSignal, useResume: boolean): Promise<string> {
     const session = useResume ? this.d.store.getSession(task.userId) : undefined;
     let final = '';
     for await (const ev of this.d.runner.run({
@@ -107,8 +106,7 @@ export class Worker {
       if (ev.kind === 'session') {
         this.d.store.setSession(task.userId, ev.sessionId);
         this.d.store.attachSession(task.id, ev.sessionId);
-      } else if (ev.kind === 'progress') {
-        this.d.store.enqueueEdit(statusId, `⏳ ${truncate(ev.text, 300)}`);
+        // progress events are intentionally ignored — the Telegram typing indicator signals activity
       } else if (ev.kind === 'final') {
         final = ev.text;
       }

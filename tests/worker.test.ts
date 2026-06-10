@@ -30,7 +30,7 @@ function enqueueChat(prompt = 'hello'): number {
 }
 
 describe('Worker', () => {
-  it('processes a task: session saved, progress edited, final sent, task done', async () => {
+  it('processes a task: session saved, final sent, task done', async () => {
     const w = makeWorker(runnerOf([
       { kind: 'session', sessionId: 's1' },
       { kind: 'progress', text: 'working on it' },
@@ -41,7 +41,7 @@ describe('Worker', () => {
     expect(store.getTask(id)).toMatchObject({ status: 'done', sessionId: 's1' });
     expect(store.getSession(7)?.claudeSessionId).toBe('s1');
     const out = store.unsentMessages();
-    expect(out.some((m) => m.kind === 'edit' && m.content.includes('working on it'))).toBe(true);
+    expect(out.some((m) => m.content.includes('Working'))).toBe(false);
     expect(out.some((m) => m.content === 'the answer')).toBe(true);
   });
 

@@ -39,7 +39,7 @@ task · `/new` rotate conversation (saves memory first) · `/schedules` list job
 
 ## Manual smoke checklist (release gate)
 
-- [ ] Send a message from a whitelisted account → status message appears, then the answer.
+- [ ] Send a message from a whitelisted account → typing indicator shows, then the answer.
 - [ ] Send from a non-whitelisted account → silently ignored (check logs).
 - [ ] Ask for something risky ("delete /tmp/x") → Approve/Deny buttons; Deny → agent reports denial.
 - [ ] `kill -9` the daemon mid-task → launchd restarts it; "interrupted" message with Resume button arrives; Resume continues in the same session.
