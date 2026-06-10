@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS meta (
 function migrateSchedules(db: Database.Database): void {
   const cols = db.pragma('table_info(schedules)') as Array<{ name: string }>;
   if (cols.some((c) => c.name === 'run_at')) return; // already new shape
+  // Capture the current AUTOINCREMENT sequence before rebuild (it can be lost if rows were deleted).
+  const seqRow = db.prepare(`SELECT seq FROM sqlite_sequence WHERE name = 'schedules'`).get() as { seq: number } | undefined;
+  const oldSeq = seqRow?.seq ?? null;
   // Old shape (cron_expr NOT NULL, no run_at). Rebuild to add run_at + nullable cron_expr + CHECK.
   db.exec(`
     BEGIN;
@@ -92,6 +95,12 @@ function migrateSchedules(db: Database.Database): void {
     ALTER TABLE schedules_new RENAME TO schedules;
     COMMIT;
   `);
+  // Restore AUTOINCREMENT sequence if the original was higher (guards against lost seq after row deletes).
+  if (oldSeq != null) {
+    const cur = db.prepare(`SELECT seq FROM sqlite_sequence WHERE name = 'schedules'`).get() as { seq: number } | undefined;
+    if (!cur) db.prepare(`INSERT INTO sqlite_sequence (name, seq) VALUES ('schedules', ?)`).run(oldSeq);
+    else if (cur.seq < oldSeq) db.prepare(`UPDATE sqlite_sequence SET seq = ? WHERE name = 'schedules'`).run(oldSeq);
+  }
 }
 
 export function openDb(path: string): Database.Database {

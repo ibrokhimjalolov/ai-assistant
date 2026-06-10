@@ -4,6 +4,33 @@ import { z } from 'zod';
 import type { Store } from './store.js';
 import type { Task } from './types.js';
 
+/** Resolve a reminder's absolute fire time from a relative delay or an absolute/HH:MM `at`. Pure + testable. */
+export function resolveRunAt(
+  input: { delay_seconds?: number; at?: string },
+  now: Date,
+): { runAt: string } | { error: string } {
+  const hasDelay = input.delay_seconds != null;
+  const hasAt = input.at != null;
+  if (hasDelay === hasAt) return { error: 'Provide exactly one of delay_seconds or at.' };
+  if (hasDelay) {
+    if (!(input.delay_seconds! > 0)) return { error: 'delay_seconds must be a positive number.' };
+    return { runAt: new Date(now.getTime() + input.delay_seconds! * 1000).toISOString() };
+  }
+  const at = input.at!.trim();
+  const hm = at.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (hm) {
+    const h = Number(hm[1]); const m = Number(hm[2]); const s = hm[3] ? Number(hm[3]) : 0;
+    if (h > 23 || m > 59 || s > 59) return { error: 'Invalid HH:MM time.' };
+    const d = new Date(now);
+    d.setHours(h, m, s, 0);
+    if (d <= now) d.setDate(d.getDate() + 1); // next occurrence today/tomorrow, local time
+    return { runAt: d.toISOString() };
+  }
+  const parsed = new Date(at);
+  if (isNaN(parsed.getTime())) return { error: 'Invalid "at": use an ISO-8601 timestamp or HH:MM.' };
+  return { runAt: parsed.toISOString() };
+}
+
 /** In-process MCP server exposing schedule management to the agent, scoped to the requesting task's user/chat. */
 export function runtimeMcpServer(store: Store, task: Pick<Task, 'userId' | 'chatId'>): Record<string, unknown> {
   return {
@@ -37,22 +64,18 @@ export function runtimeMcpServer(store: Store, task: Pick<Task, 'userId' | 'chat
           'reminder_create',
           'Create a ONE-TIME reminder that fires once. Use this for "remind me in N minutes", ' +
             '"remind me at HH:MM", or any single future reminder. Provide either delay_seconds ' +
-            '(relative, from now) OR at (absolute ISO-8601 timestamp). The reminder prompt runs ' +
-            'and its result is sent to you. For RECURRING jobs use schedule_create instead.',
-          { delay_seconds: z.number().int().positive().optional(), at: z.string().optional(), prompt: z.string() },
+            '(relative, from now) OR at (absolute ISO-8601 timestamp or HH:MM, next occurrence). ' +
+            'The reminder prompt runs and its result is sent to you. For RECURRING jobs use schedule_create instead.',
+          {
+            delay_seconds: z.number().int().positive().optional(),
+            at: z.string().optional().describe('Absolute time: ISO-8601 timestamp, or HH:MM (next occurrence, local time).'),
+            prompt: z.string(),
+          },
           async (a) => {
-            let runAt: Date;
-            if (a.delay_seconds != null && a.at == null) {
-              runAt = new Date(Date.now() + a.delay_seconds * 1000);
-            } else if (a.at != null && a.delay_seconds == null) {
-              const parsed = new Date(a.at);
-              if (isNaN(parsed.getTime())) return { content: [{ type: 'text', text: 'Invalid "at" timestamp; use ISO-8601.' }], isError: true };
-              runAt = parsed;
-            } else {
-              return { content: [{ type: 'text', text: 'Provide exactly one of delay_seconds or at.' }], isError: true };
-            }
-            const id = store.createReminder({ runAt: runAt.toISOString(), prompt: a.prompt, createdByUserId: task.userId, chatId: task.chatId });
-            return { content: [{ type: 'text', text: `Reminder #${id} set for ${runAt.toISOString()}` }] };
+            const r = resolveRunAt({ delay_seconds: a.delay_seconds, at: a.at }, new Date());
+            if ('error' in r) return { content: [{ type: 'text', text: r.error }], isError: true };
+            const id = store.createReminder({ runAt: r.runAt, prompt: a.prompt, createdByUserId: task.userId, chatId: task.chatId });
+            return { content: [{ type: 'text', text: `Reminder #${id} set for ${r.runAt}` }] };
           },
         ),
       ],

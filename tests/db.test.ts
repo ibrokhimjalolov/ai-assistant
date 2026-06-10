@@ -49,4 +49,17 @@ describe('openDb', () => {
     const row = db.prepare('SELECT cron_expr, run_at, prompt FROM schedules').get() as any;
     expect(row).toMatchObject({ cron_expr: '0 8 * * *', run_at: null, prompt: 'brief' });
   });
+
+  it('migration preserves the AUTOINCREMENT sequence past deleted rows', () => {
+    const p = join(mkdtempSync(join(tmpdir(), 'mig2-')), 'old.db');
+    const raw = new Database(p);
+    raw.exec(`CREATE TABLE schedules (id INTEGER PRIMARY KEY AUTOINCREMENT, cron_expr TEXT NOT NULL, prompt TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, missed_policy TEXT NOT NULL DEFAULT 'run_now', created_by_user_id INTEGER NOT NULL, chat_id INTEGER NOT NULL, last_run_at TEXT)`);
+    raw.prepare(`INSERT INTO schedules (cron_expr,prompt,created_by_user_id,chat_id) VALUES ('0 8 * * *','a',1,1)`).run();
+    raw.prepare(`INSERT INTO schedules (cron_expr,prompt,created_by_user_id,chat_id) VALUES ('0 9 * * *','b',1,1)`).run();
+    raw.prepare(`DELETE FROM schedules`).run(); // seq now 2, table empty
+    raw.close();
+    const db = openDb(p);
+    const seq = (db.prepare(`SELECT seq FROM sqlite_sequence WHERE name='schedules'`).get() as any)?.seq;
+    expect(seq).toBe(2);
+  });
 });
