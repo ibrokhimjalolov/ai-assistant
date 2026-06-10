@@ -3,6 +3,7 @@ import type { Store } from './store.js';
 export interface TelegramApi {
   sendMessage(chatId: number, text: string, replyMarkupJson?: string | null): Promise<number>;
   editMessageText(chatId: number, messageId: number, text: string): Promise<void>;
+  sendChatAction(chatId: number, action: string): Promise<void>;
 }
 
 export class Sender {

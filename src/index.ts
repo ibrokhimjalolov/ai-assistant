@@ -14,6 +14,7 @@ import { scaffoldAgentHome } from './agent-home.js';
 import { recoverInterrupted } from './recovery.js';
 import { buildBot, GrammyTelegramApi } from './telegram.js';
 import { maybeBackup } from './backup.js';
+import { pulseTyping } from './typing.js';
 
 async function main(): Promise<void> {
   const paths = appPaths();
@@ -46,7 +47,8 @@ async function main(): Promise<void> {
   });
   const startedAt = new Date();
   const bot = buildBot(cfg, { store, gate, worker, startedAt });
-  const sender = new Sender(store, new GrammyTelegramApi(bot.api));
+  const tgApi = new GrammyTelegramApi(bot.api);
+  const sender = new Sender(store, tgApi);
   const scheduler = new Scheduler(store);
 
   const recovered = recoverInterrupted(store);
@@ -67,6 +69,8 @@ async function main(): Promise<void> {
     draining = true;
     try { await sender.drainOnce(); } catch (e) { console.error('[drain]', e); } finally { draining = false; }
   }, 2000);
+
+  setInterval(() => { void pulseTyping(worker, tgApi); }, 4000);
 
   setInterval(() => {
     try {

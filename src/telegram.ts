@@ -93,4 +93,7 @@ export class GrammyTelegramApi implements TelegramApi {
   async editMessageText(chatId: number, messageId: number, text: string): Promise<void> {
     await this.api.editMessageText(chatId, messageId, text);
   }
+  async sendChatAction(chatId: number, action: string): Promise<void> {
+    await this.api.sendChatAction(chatId, action as Parameters<typeof this.api.sendChatAction>[1]);
+  }
 }

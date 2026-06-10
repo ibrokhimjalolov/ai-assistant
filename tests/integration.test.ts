@@ -16,6 +16,7 @@ class FakeApi implements TelegramApi {
     return this.nextId++;
   }
   async editMessageText(): Promise<void> {}
+  async sendChatAction(): Promise<void> {}
 }
 
 async function until(cond: () => boolean, ms = 1000): Promise<void> {

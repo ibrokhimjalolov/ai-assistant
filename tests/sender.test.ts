@@ -17,6 +17,7 @@ class FakeApi implements TelegramApi {
     if (this.failNext > 0) { this.failNext--; throw new Error('telegram down'); }
     this.edits.push({ chatId, messageId, text });
   }
+  async sendChatAction(): Promise<void> {}
 }
 
 let store: Store; let api: FakeApi; let sender: Sender;
