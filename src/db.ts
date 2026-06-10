@@ -68,7 +68,11 @@ CREATE TABLE IF NOT EXISTS meta (
 
 export function openDb(path: string): Database.Database {
   const db = new Database(path);
-  db.pragma('journal_mode = WAL');
+  // ':memory:' databases always report 'memory'; file DBs must actually get WAL
+  const mode = db.pragma('journal_mode = WAL', { simple: true });
+  if (mode !== 'wal' && mode !== 'memory') {
+    throw new Error(`SQLite WAL mode unavailable (got '${mode}') — check filesystem support`);
+  }
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
   return db;

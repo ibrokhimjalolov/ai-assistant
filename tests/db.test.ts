@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { openDb } from '../src/db.js';
 
 describe('openDb', () => {
@@ -19,5 +22,10 @@ describe('openDb', () => {
     expect(() =>
       db.prepare(`INSERT INTO tasks (source, user_id, chat_id, prompt, status) VALUES ('telegram', 1, 1, 'x', 'bogus')`).run(),
     ).toThrow();
+  });
+
+  it('uses real WAL mode on file-backed databases', () => {
+    const db = openDb(join(mkdtempSync(join(tmpdir(), 'db-')), 'test.db'));
+    expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
   });
 });
