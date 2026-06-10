@@ -12,6 +12,13 @@ export class SdkClaudeRunner implements ClaudeRunner {
         cwd: req.cwd,
         resume: req.resume,
         permissionMode: 'default',
+        // Load the Agent Home CLAUDE.md (project scope) so the persona, memory, and
+        // tool-usage instructions apply, and adopt Claude Code's system prompt so the
+        // agent proactively USES tools. Without these the agent runs in SDK isolation
+        // mode as a passive chatbot: it never loads CLAUDE.md and never calls tools
+        // like schedule_create, so reminders/memory silently do nothing.
+        settingSources: ['project', 'local'],
+        systemPrompt: { type: 'preset', preset: 'claude_code' },
         abortController,
         // The SDK's CanUseTool receives a third `options` argument (signal, toolUseID, etc.)
         // that our RunRequest.canUseTool does not expose. We bridge by ignoring it.
