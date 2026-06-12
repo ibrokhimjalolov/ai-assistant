@@ -1,5 +1,5 @@
 import { isAbsolute, relative, resolve } from 'node:path';
-import type { Config } from './config.js';
+import type { AgentConfig } from './config.js';
 
 const READ_ONLY_TOOLS = new Set([
   'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead', 'Task', 'TaskOutput',
@@ -9,7 +9,7 @@ const FILE_EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 export class Policy {
   constructor(private agentHome: string, private bashAllowlist: RegExp[]) {}
 
-  static fromConfig(cfg: Config): Policy {
+  static fromConfig(cfg: AgentConfig): Policy {
     return new Policy(cfg.agentHome, cfg.bashAllowlist.map((s) => new RegExp(s)));
   }
 

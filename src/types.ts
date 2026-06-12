@@ -59,6 +59,8 @@ export interface RunRequest {
   signal: AbortSignal;
   canUseTool: CanUseTool;
   mcpServers?: Record<string, unknown>;
+  /** Per-agent Claude subscription token, injected into the spawned CLI's env. */
+  claudeToken?: string;
 }
 
 export interface ClaudeRunner {

@@ -126,6 +126,19 @@ describe('Worker', () => {
     expect(seenPrompt).toContain('what is my balance');
   });
 
+  it('scheduled-job prompt says reply is auto-delivered and forbids send tools; result delivered via outbox', async () => {
+    let seenPrompt = '';
+    const w = makeWorker({
+      async *run(req) { seenPrompt = req.prompt; yield { kind: 'final', text: 'report text' }; },
+    });
+    store.enqueueTask({ source: 'schedule', kind: 'chat', userId: 7, chatId: 70, prompt: 'Summarize my open tasks' });
+    await w.tick();
+    expect(seenPrompt).toContain('automatically');
+    expect(seenPrompt).toMatch(/do NOT call any tool|send_message/);
+    expect(seenPrompt).toContain('Summarize my open tasks');
+    expect(store.unsentMessages().some((m) => m.content === 'report text')).toBe(true);
+  });
+
   it('marks cancelled when cancel fires during the first run (before retry)', async () => {
     const w = makeWorker({
       async *run(req) {
@@ -141,5 +154,37 @@ describe('Worker', () => {
     expect(w.cancel(7)).toBe(true);
     await ticking;
     expect(store.getTask(id)?.status).toBe('cancelled');
+  });
+
+  it('aborts and FAILS (not cancels) a task that exceeds taskTimeoutMs', async () => {
+    let aborted = false;
+    const w = new Worker({
+      store, gate, agentHome: '/home', taskTimeoutMs: 30,
+      runner: {
+        async *run(req) {
+          yield { kind: 'session', sessionId: 's-timeout' };
+          await new Promise<void>((res) => req.signal.addEventListener('abort', () => { aborted = true; res(); }));
+          throw new Error('aborted by timeout');
+        },
+      },
+    });
+    const id = enqueueChat();
+    await w.tick();
+    expect(aborted).toBe(true);
+    expect(store.getTask(id)?.status).toBe('failed');
+    const out = store.unsentMessages();
+    expect(out.some((m) => m.content.includes('timed out'))).toBe(true);
+    expect(out.some((m) => m.content.includes('cancelled'))).toBe(false);
+  });
+
+  it('forwards the agent claudeToken to the runner', async () => {
+    let seen: string | undefined;
+    const w = new Worker({
+      store, gate, agentHome: '/home', claudeToken: 'agent-tok',
+      runner: { async *run(req) { seen = req.claudeToken; yield { kind: 'final', text: 'ok' }; } },
+    });
+    enqueueChat();
+    await w.tick();
+    expect(seen).toBe('agent-tok');
   });
 });

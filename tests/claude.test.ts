@@ -1,6 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { mapSdkMessage, parseResetTime } from '../src/claude.js';
+import { mapSdkMessage, parseResetTime, formatSpawnError } from '../src/claude.js';
 import { UsageLimitError } from '../src/types.js';
+
+describe('formatSpawnError', () => {
+  it('appends the tail of captured stderr to the error message', () => {
+    const out = formatSpawnError(new Error('Claude Code process exited with code 1'), 'boom\nConfigParseError: bad marketplace url');
+    expect(out).toContain('exited with code 1');
+    expect(out).toContain('ConfigParseError');
+    expect(out).toContain('claude stderr');
+  });
+  it('returns just the base message when stderr is empty', () => {
+    expect(formatSpawnError(new Error('x'), '   ')).toBe('x');
+  });
+});
 
 describe('mapSdkMessage', () => {
   it('maps system init to session event', () => {

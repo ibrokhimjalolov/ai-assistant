@@ -11,6 +11,10 @@ export interface WorkerDeps {
   runner: ClaudeRunner;
   gate: PermissionGate;
   agentHome: string;
+  /** Total wall-clock per task before the run is aborted as a safety backstop. 0/undefined disables. */
+  taskTimeoutMs?: number;
+  /** Per-agent Claude subscription token, forwarded to the runner. */
+  claudeToken?: string;
   mcpServersFor?: (task: Task) => Record<string, unknown>;
 }
 
@@ -43,12 +47,19 @@ export class Worker {
   private async process(task: Task): Promise<void> {
     const abort = new AbortController();
     this.current = { task, abort };
+    const state = { timedOut: false };
+    const timeoutMs = this.d.taskTimeoutMs ?? 600_000;
+    const timer = timeoutMs > 0
+      ? setTimeout(() => { state.timedOut = true; abort.abort(); }, timeoutMs)
+      : undefined;
     log.info('task claimed', { id: task.id, userId: task.userId, kind: task.kind, source: task.source });
     try {
       const final = await this.runOnce(task, abort.signal, true);
       this.complete(task, final, null);
     } catch (e) {
-      if (abort.signal.aborted) {
+      if (state.timedOut) {
+        this.failTimedOut(task, timeoutMs);
+      } else if (abort.signal.aborted) {
         this.d.store.finishTask(task.id, 'cancelled');
         this.d.store.enqueueMessage({ chatId: task.chatId, content: '🛑 Task cancelled.' });
         log.info('task cancelled', { id: task.id });
@@ -61,14 +72,26 @@ export class Worker {
         });
         log.warn('usage limit — pausing', { id: task.id, resumeAt: this.pausedUntil?.toISOString() });
       } else {
-        await this.retryFresh(task, abort, e);
+        await this.retryFresh(task, abort, e, state);
       }
     } finally {
+      if (timer) clearTimeout(timer);
       this.current = null;
     }
   }
 
-  private async retryFresh(task: Task, abort: AbortController, firstError: unknown): Promise<void> {
+  private failTimedOut(task: Task, timeoutMs: number): void {
+    const mins = Math.max(1, Math.round(timeoutMs / 60_000));
+    this.d.store.finishTask(task.id, 'failed', `Task timed out after ${mins} min`);
+    this.d.store.enqueueMessage({
+      chatId: task.chatId,
+      content: `⏱️ Task timed out after ${mins} min with no completion and was aborted. Try again or break it into smaller steps.`,
+    });
+    log.warn('task timed out', { id: task.id, timeoutMs });
+  }
+
+  private async retryFresh(task: Task, abort: AbortController, firstError: unknown, state: { timedOut: boolean }): Promise<void> {
+    if (state.timedOut) { this.failTimedOut(task, this.d.taskTimeoutMs ?? 600_000); return; }
     if (abort.signal.aborted) {
       this.d.store.finishTask(task.id, 'cancelled');
       this.d.store.enqueueMessage({ chatId: task.chatId, content: '🛑 Task cancelled.' });
@@ -80,6 +103,7 @@ export class Worker {
       const final = await this.runOnce(task, abort.signal, false);
       this.complete(task, final, '⚠️ Previous conversation context was lost due to a session error.');
     } catch (e2) {
+      if (state.timedOut) { this.failTimedOut(task, this.d.taskTimeoutMs ?? 600_000); return; }
       const err = e2 ?? firstError;
       this.d.store.finishTask(task.id, 'failed', truncate(String(err), 500));
       this.d.store.enqueueMessage({ chatId: task.chatId, content: `❌ Task failed: ${truncate(String(err), 300)}` });
@@ -97,7 +121,12 @@ export class Worker {
 
   private effectivePrompt(task: Task): string {
     if (task.source === 'schedule') {
-      return `[Scheduled job created by Telegram user ${task.userId}]\n\n${task.prompt}`;
+      return (
+        `[Scheduled job created by Telegram user ${task.userId}. Your final reply is automatically delivered ` +
+        `to them as a Telegram message in this chat. Respond with ONLY the content to show the user, and do NOT ` +
+        `call any tool to send or deliver it — no send_message, no Telegram/messaging tools. Just write the message ` +
+        `as your answer.]\n\n${task.prompt}`
+      );
     }
     return `[Message from Telegram user ${task.userId}]\n\n${task.prompt}`;
   }
@@ -112,6 +141,7 @@ export class Worker {
       signal,
       canUseTool: this.d.gate.handlerFor(task),
       mcpServers: this.d.mcpServersFor?.(task),
+      claudeToken: this.d.claudeToken,
     })) {
       if (ev.kind === 'session') {
         this.d.store.setSession(task.userId, ev.sessionId);

@@ -1,5 +1,5 @@
 import { Bot, type Api, type Context, type NextFunction } from 'grammy';
-import type { Config } from './config.js';
+import type { AgentConfig } from './config.js';
 import type { Store } from './store.js';
 import type { PermissionGate } from './gate.js';
 import type { Worker } from './worker.js';
@@ -58,7 +58,7 @@ export async function handleResumeCallback(store: Store, ctx: Context & { match:
 
 export interface BotDeps { store: Store; gate: PermissionGate; worker: Worker; startedAt: Date; }
 
-export function buildBot(cfg: Config, d: BotDeps): Bot {
+export function buildBot(cfg: AgentConfig, d: BotDeps): Bot {
   const bot = new Bot(cfg.telegramBotToken);
   bot.use(whitelistMiddleware(cfg.whitelist));
 

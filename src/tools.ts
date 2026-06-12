@@ -42,7 +42,9 @@ export function runtimeMcpServer(store: Store, task: Pick<Task, 'userId' | 'chat
           'schedule_create',
           'Create a RECURRING scheduled job (standard 5-field cron). For one-time reminders use reminder_create instead. ' +
             'cron is a standard 5-field cron expression in local time. ' +
-            'The prompt will run as a task and its result is sent to the creating user.',
+            'The prompt runs as a task and its FINAL REPLY is delivered to the creating user automatically. ' +
+            "Phrase `prompt` as the work/content to produce (e.g. \"Summarize my open tasks for today\"), NOT as " +
+            '"send a Telegram message" — do not instruct it to send or deliver anything; the delivery is automatic.',
           { cron: z.string(), prompt: z.string(), missed_policy: z.enum(['run_now', 'skip']).optional() },
           async (a) => {
             parser.parseExpression(a.cron); // throws on invalid cron
@@ -65,7 +67,9 @@ export function runtimeMcpServer(store: Store, task: Pick<Task, 'userId' | 'chat
           'Create a ONE-TIME reminder that fires once. Use this for "remind me in N minutes", ' +
             '"remind me at HH:MM", or any single future reminder. Provide either delay_seconds ' +
             '(relative, from now) OR at (absolute ISO-8601 timestamp or HH:MM, next occurrence). ' +
-            'The reminder prompt runs and its result is sent to you. For RECURRING jobs use schedule_create instead.',
+            'The reminder prompt runs and its FINAL REPLY is delivered to you automatically. ' +
+            "Phrase `prompt` as what to remind/produce (e.g. \"Remind me to sleep\"), NOT as \"send a Telegram message\" — " +
+            'do not instruct it to send anything; delivery is automatic. For RECURRING jobs use schedule_create instead.',
           {
             delay_seconds: z.number().int().positive().optional(),
             at: z.string().optional().describe('Absolute time: ISO-8601 timestamp, or HH:MM (next occurrence, local time).'),

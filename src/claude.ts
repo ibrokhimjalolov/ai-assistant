@@ -6,12 +6,27 @@ export class SdkClaudeRunner implements ClaudeRunner {
   async *run(req: RunRequest): AsyncIterable<RunEvent> {
     const abortController = new AbortController();
     req.signal.addEventListener('abort', () => abortController.abort(), { once: true });
+    // Capture the spawned CLI's stderr so failures surface the real cause to the
+    // user (and logs) instead of an opaque "process exited with code 1".
+    let stderrBuf = '';
     const q = query({
       prompt: req.prompt,
       options: {
         cwd: req.cwd,
         resume: req.resume,
-        permissionMode: 'default',
+        // Per-agent Claude token → injected into the spawned CLI's env (no process-global token).
+        ...(req.claudeToken
+          ? { env: { ...process.env, CLAUDE_CODE_OAUTH_TOKEN: req.claudeToken, ANTHROPIC_API_KEY: undefined } }
+          : {}),
+        // Owner explicitly chose to bypass all approvals (no Telegram Approve/Deny).
+        // Tools auto-run; canUseTool below is left wired but NOT consulted in this mode.
+        // To restore gating, set permissionMode back to 'default' and drop the next line.
+        permissionMode: 'bypassPermissions',
+        allowDangerouslySkipPermissions: true,
+        stderr: (d: string) => {
+          stderrBuf += d;
+          if (stderrBuf.length > 8000) stderrBuf = stderrBuf.slice(-8000);
+        },
         // Load the Agent Home CLAUDE.md (project scope) so the persona, memory, and
         // tool-usage instructions apply, and adopt Claude Code's system prompt so the
         // agent proactively USES tools. Without these the agent runs in SDK isolation
@@ -28,11 +43,23 @@ export class SdkClaudeRunner implements ClaudeRunner {
         mcpServers: req.mcpServers as Record<string, McpServerConfig> | undefined,
       },
     });
-    for await (const m of q) {
-      const ev = mapSdkMessage(m as Record<string, unknown>);
-      if (ev) yield ev;
+    try {
+      for await (const m of q) {
+        const ev = mapSdkMessage(m as Record<string, unknown>);
+        if (ev) yield ev;
+      }
+    } catch (e) {
+      if (e instanceof UsageLimitError) throw e; // worker handles this specially
+      throw new Error(formatSpawnError(e, stderrBuf));
     }
   }
+}
+
+/** Combine the thrown error with the tail of the CLI's stderr for a human-readable failure. Pure + testable. */
+export function formatSpawnError(err: unknown, stderr: string): string {
+  const base = err instanceof Error ? err.message : String(err);
+  const tail = stderr.trim().split('\n').slice(-12).join('\n').slice(-1200);
+  return tail ? `${base}\n— claude stderr —\n${tail}` : base;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
