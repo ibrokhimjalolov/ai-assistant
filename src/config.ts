@@ -10,6 +10,8 @@ export interface AgentConfig {
   approvalTimeoutMs: number;
   taskTimeoutMs: number;
   bashAllowlist: string[];
+  /** Auto-rotate the session when context usage reaches this fraction [0,1]; 0 disables. */
+  rotateAtContextFraction: number;
 }
 
 /** Top-level config: a list of agents, plus an optional shared default Claude token. */
@@ -33,6 +35,7 @@ const AGENT_DEFAULTS = {
   approvalTimeoutMs: 900_000,
   taskTimeoutMs: 600_000,
   bashAllowlist: DEFAULT_BASH_ALLOWLIST,
+  rotateAtContextFraction: 0.70,
 };
 
 const TEMPLATE = {
@@ -109,6 +112,12 @@ function validateAgent(a: any, i: number, defaultToken: string | undefined, seen
   }
   if (!a.agentHome || !existsSync(a.agentHome) || !statSync(a.agentHome).isDirectory()) {
     throw new ConfigError(`config: ${where} agentHome must point to an existing directory — create it first`);
+  }
+  if (a.rotateAtContextFraction !== undefined) {
+    const v = a.rotateAtContextFraction;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1) {
+      throw new ConfigError(`config: ${where} rotateAtContextFraction must be a number in [0,1] (0 disables)`);
+    }
   }
   return {
     ...AGENT_DEFAULTS,
