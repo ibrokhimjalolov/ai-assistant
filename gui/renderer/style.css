@@ -1,0 +1,20 @@
+:root { font-family: -apple-system, system-ui, sans-serif; }
+body { margin: 0; background: #1115; color: #1d1d1f; background: #f5f5f7; }
+header { padding: 16px 20px; border-bottom: 1px solid #d2d2d7; position: sticky; top: 0; background: #f5f5f7; }
+h1 { font-size: 16px; margin: 0 0 6px; }
+.daemon { font-size: 13px; font-weight: 600; }
+.daemon.ok { color: #1a7f37; } .daemon.bad { color: #b3261e; } .daemon.muted { color: #6e6e73; }
+.generated { font-size: 11px; color: #86868b; margin-top: 2px; }
+main { padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+.card { background: #fff; border: 1px solid #d2d2d7; border-radius: 10px; padding: 14px 16px; }
+.card h2 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+.pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.pill.busy { background: #fff3cd; color: #8a6d00; } .pill.idle { background: #e8f5e9; color: #1a7f37; }
+.meta { font-size: 12px; color: #6e6e73; margin: 4px 0 10px; }
+.section-title { font-size: 12px; font-weight: 700; color: #6e6e73; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+td, th { text-align: left; padding: 3px 6px; border-bottom: 1px solid #f0f0f2; }
+.badge { font-weight: 700; }
+.badge.ok { color: #1a7f37; } .badge.bad { color: #b3261e; } .badge.busy { color: #8a6d00; } .badge.muted { color: #6e6e73; }
+.error { margin: 16px 20px; padding: 12px; background: #fde7e9; color: #b3261e; border-radius: 8px; font-size: 13px; }
+.unavailable { color: #b3261e; font-size: 13px; }

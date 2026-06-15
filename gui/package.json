@@ -1,0 +1,16 @@
+{
+  "name": "agent-runtime-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only desktop monitor for the personal agent runtime",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "vitest": "^3.0.0"
+  }
+}
