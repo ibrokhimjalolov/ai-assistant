@@ -1,6 +1,7 @@
 import type { Store } from './store.js';
 import type { Policy } from './policy.js';
 import type { CanUseTool, PermissionResult, Task } from './types.js';
+import { escapeHtml } from './format.js';
 import { logger } from './log.js';
 
 const log = logger('gate');
@@ -25,7 +26,7 @@ export class PermissionGate {
     this.store.enqueueMessage({
       chatId: task.chatId,
       kind: 'approval',
-      content: `🔐 Approval needed (task #${task.id})\nTool: ${toolName}\n\n${rendered}`,
+      content: `🔐 Approval needed (task #${task.id})\nTool: ${escapeHtml(toolName)}\n\n${escapeHtml(rendered)}`,
       replyMarkup: approvalKeyboard(id),
     });
     log.info('approval requested', { approvalId: id, taskId: task.id, tool: toolName, input: rendered });

@@ -2,6 +2,7 @@ import type { Store } from './store.js';
 import type { PermissionGate } from './gate.js';
 import { UsageLimitError, type ClaudeRunner, type Task } from './types.js';
 import { fmtTime, truncate } from './util.js';
+import { escapeHtml } from './format.js';
 import { logger } from './log.js';
 
 const log = logger('worker');
@@ -106,7 +107,7 @@ export class Worker {
       if (state.timedOut) { this.failTimedOut(task, this.d.taskTimeoutMs ?? 600_000); return; }
       const err = e2 ?? firstError;
       this.d.store.finishTask(task.id, 'failed', truncate(String(err), 500));
-      this.d.store.enqueueMessage({ chatId: task.chatId, content: `❌ Task failed: ${truncate(String(err), 300)}` });
+      this.d.store.enqueueMessage({ chatId: task.chatId, content: `❌ Task failed: ${escapeHtml(truncate(String(err), 300))}` });
       log.error('task failed', { id: task.id, error: String(err) });
     }
   }

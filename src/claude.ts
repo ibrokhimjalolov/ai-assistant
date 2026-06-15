@@ -2,6 +2,29 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import { UsageLimitError, type ClaudeRunner, type RunEvent, type RunRequest } from './types.js';
 
+/**
+ * Appended to the agent's system prompt. The agent's replies are delivered as
+ * Telegram messages sent with parse_mode=HTML, so it must produce Telegram HTML
+ * directly — Telegram does not render Markdown, and the model otherwise defaults
+ * to `**bold**`/`#`/tables that show up as literal characters.
+ */
+export const TELEGRAM_OUTPUT_INSTRUCTION = `
+## Telegram output format (IMPORTANT)
+
+Your replies are delivered to the user as Telegram messages sent with parse_mode=HTML.
+Telegram does NOT render Markdown. Format using ONLY these Telegram-supported HTML tags:
+<b>bold</b>, <i>italic</i>, <u>underline</u>, <s>strikethrough</s>, <code>inline code</code>,
+<pre>multi-line code</pre>, <a href="https://example.com">link</a>, <blockquote>quote</blockquote>.
+
+Hard rules:
+- NEVER use Markdown syntax: no **bold**, no __bold__, no *italic*, no \`backticks\`, no # headings,
+  no Markdown links [text](url), no | tables |, no --- rules.
+- For an emphasised label (e.g. a question), use <b>…</b>. For lists, put each item on its own line
+  starting with "• " (bullets) or "1. " (numbered) — Telegram has no list markup.
+- Any literal <, >, or & in your prose MUST be escaped as &lt;, &gt;, &amp; so Telegram can parse it.
+- Keep replies concise; avoid headings and tables entirely.
+`.trim();
+
 export class SdkClaudeRunner implements ClaudeRunner {
   async *run(req: RunRequest): AsyncIterable<RunEvent> {
     const abortController = new AbortController();
@@ -33,7 +56,7 @@ export class SdkClaudeRunner implements ClaudeRunner {
         // mode as a passive chatbot: it never loads CLAUDE.md and never calls tools
         // like schedule_create, so reminders/memory silently do nothing.
         settingSources: ['project', 'local'],
-        systemPrompt: { type: 'preset', preset: 'claude_code' },
+        systemPrompt: { type: 'preset', preset: 'claude_code', append: TELEGRAM_OUTPUT_INSTRUCTION },
         abortController,
         // The SDK's CanUseTool receives a third `options` argument (signal, toolUseID, etc.)
         // that our RunRequest.canUseTool does not expose. We bridge by ignoring it.

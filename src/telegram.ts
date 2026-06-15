@@ -6,6 +6,7 @@ import type { Worker } from './worker.js';
 import type { TelegramApi } from './sender.js';
 import { intakeMessage } from './intake.js';
 import { statusText, queueText, newConversation, schedulesText } from './commands.js';
+import { htmlToPlain } from './format.js';
 import { logger } from './log.js';
 
 const log = logger('telegram');
@@ -90,16 +91,45 @@ export function buildBot(cfg: AgentConfig, d: BotDeps): Bot {
   return bot;
 }
 
-/** Adapter: grammY Api → the Sender's TelegramApi interface. */
+/**
+ * True when Telegram rejected a message because it couldn't parse the HTML
+ * entities (a malformed conversion), as opposed to a transport/rate error.
+ * On these we resend as plain text rather than letting the Sender retry the
+ * same broken HTML 8 times and then drop the message.
+ */
+function isTelegramParseError(e: unknown): boolean {
+  const err = e as { error_code?: number; description?: string; message?: string };
+  const msg = (err?.description ?? err?.message ?? String(e)).toLowerCase();
+  return /can't parse entities|unsupported start tag|can't find end|unclosed|entit|byte offset/.test(msg);
+}
+
+/** Adapter: grammY Api → the Sender's TelegramApi interface.
+ * The agent is instructed to emit Telegram HTML (see TELEGRAM_OUTPUT_INSTRUCTION),
+ * so we send its text as-is with `parse_mode: 'HTML'`. If Telegram rejects the
+ * entities we resend once as plain text so the message is never dropped. */
 export class GrammyTelegramApi implements TelegramApi {
   constructor(private api: Api) {}
   async sendMessage(chatId: number, text: string, replyMarkupJson?: string | null): Promise<number> {
-    const r = await this.api.sendMessage(chatId, text,
-      replyMarkupJson ? { reply_markup: JSON.parse(replyMarkupJson) } : undefined);
-    return r.message_id;
+    const replyMarkup = replyMarkupJson ? JSON.parse(replyMarkupJson) : undefined;
+    const markup = replyMarkup ? { reply_markup: replyMarkup } : {};
+    try {
+      const r = await this.api.sendMessage(chatId, text, { parse_mode: 'HTML', ...markup });
+      return r.message_id;
+    } catch (e) {
+      if (!isTelegramParseError(e)) throw e;
+      log.warn('telegram rejected HTML entities; resending as plain text', { chatId });
+      const r = await this.api.sendMessage(chatId, htmlToPlain(text), markup);
+      return r.message_id;
+    }
   }
   async editMessageText(chatId: number, messageId: number, text: string): Promise<void> {
-    await this.api.editMessageText(chatId, messageId, text);
+    try {
+      await this.api.editMessageText(chatId, messageId, text, { parse_mode: 'HTML' });
+    } catch (e) {
+      if (!isTelegramParseError(e)) throw e;
+      log.warn('telegram rejected HTML entities on edit; resending as plain text', { chatId });
+      await this.api.editMessageText(chatId, messageId, htmlToPlain(text), {});
+    }
   }
   async sendChatAction(chatId: number, action: string): Promise<void> {
     await this.api.sendChatAction(chatId, action as Parameters<typeof this.api.sendChatAction>[1]);

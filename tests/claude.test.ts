@@ -1,6 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { mapSdkMessage, parseResetTime, formatSpawnError } from '../src/claude.js';
+import { mapSdkMessage, parseResetTime, formatSpawnError, TELEGRAM_OUTPUT_INSTRUCTION } from '../src/claude.js';
 import { UsageLimitError } from '../src/types.js';
+
+describe('TELEGRAM_OUTPUT_INSTRUCTION', () => {
+  it('instructs the agent to use Telegram HTML, not Markdown', () => {
+    expect(TELEGRAM_OUTPUT_INSTRUCTION).toMatch(/HTML/);
+    expect(TELEGRAM_OUTPUT_INSTRUCTION).toMatch(/<b>/);
+    expect(TELEGRAM_OUTPUT_INSTRUCTION.toLowerCase()).toContain('markdown');
+  });
+
+  it('explicitly forbids the **bold** markdown the model defaults to', () => {
+    expect(TELEGRAM_OUTPUT_INSTRUCTION).toContain('**');
+  });
+});
 
 describe('formatSpawnError', () => {
   it('appends the tail of captured stderr to the error message', () => {
