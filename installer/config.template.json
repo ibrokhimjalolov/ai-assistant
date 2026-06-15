@@ -1,0 +1,14 @@
+{
+  "claudeOauthToken": "",
+  "agents": [
+    {
+      "name": "default",
+      "telegramBotToken": "",
+      "whitelist": [],
+      "agentHome": "",
+      "claudeOauthToken": "",
+      "approvalTimeoutMs": 900000,
+      "taskTimeoutMs": 600000
+    }
+  ]
+}
