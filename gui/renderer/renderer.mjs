@@ -1,4 +1,4 @@
-import { formatDuration, statusClass, daemonText } from './format.mjs';
+import { formatDuration, statusClass, daemonText, elapsedSeconds } from './format.mjs';
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,7 +31,8 @@ function renderAgent(a) {
 
   if (a.busy && a.currentTask) {
     card.appendChild(el('div', 'section-title', 'Current task'));
-    card.appendChild(el('div', null, `#${a.currentTask.id} (${a.currentTask.source}) — ${a.currentTask.prompt}`));
+    const elapsed = formatDuration(elapsedSeconds(a.currentTask.startedAt, Date.now()));
+    card.appendChild(el('div', null, `#${a.currentTask.id} (${a.currentTask.source}) · running ${elapsed} — ${a.currentTask.prompt}`));
   }
 
   card.appendChild(el('div', 'section-title', 'Sessions'));

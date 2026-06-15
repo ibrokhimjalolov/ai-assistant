@@ -18,3 +18,14 @@ export function daemonText(d) {
   if (d && d.alive === false) return 'Stopped';
   return 'Unknown';
 }
+// Whole seconds between a task's start time and `nowMs`. Accepts both the
+// SQLite 'YYYY-MM-DD HH:MM:SS' (UTC, no Z) and ISO-with-Z formats. Negative
+// drift is clamped to 0; null/empty/unparseable → null.
+export function elapsedSeconds(startedAt, nowMs) {
+  if (!startedAt) return null;
+  const str = String(startedAt);
+  const iso = str.includes('T') || str.endsWith('Z') ? str : str.replace(' ', 'T') + 'Z';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return null;
+  return Math.max(0, Math.floor((nowMs - t) / 1000));
+}
