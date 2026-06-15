@@ -12,6 +12,7 @@ export interface Task {
   status: TaskStatus;
   sessionId: string | null;
   resultSummary: string | null;
+  silent: boolean;
 }
 
 export type OutKind = 'reply' | 'edit' | 'approval' | 'proactive';

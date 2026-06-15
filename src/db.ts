@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     CHECK (status IN ('queued','running','done','failed','interrupted','cancelled')),
   session_id TEXT,
   result_summary TEXT,
+  silent INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   started_at TEXT,
   finished_at TEXT
@@ -103,6 +104,13 @@ function migrateSchedules(db: Database.Database): void {
   }
 }
 
+function migrateTasks(db: Database.Database): void {
+  const cols = db.pragma('table_info(tasks)') as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === 'silent')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN silent INTEGER NOT NULL DEFAULT 0`);
+  }
+}
+
 export function openDb(path: string): Database.Database {
   const db = new Database(path);
   // ':memory:' databases always report 'memory'; file DBs must actually get WAL
@@ -113,5 +121,6 @@ export function openDb(path: string): Database.Database {
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
   migrateSchedules(db);
+  migrateTasks(db);
   return db;
 }
