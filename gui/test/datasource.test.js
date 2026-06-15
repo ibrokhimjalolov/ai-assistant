@@ -47,9 +47,13 @@ describe('loadAgents', () => {
     const root = tmp();
     expect(() => loadAgents(root)).toThrow(/config/i);
   });
+  it('throws ConfigError when config.json is not valid JSON', () => {
+    const root = tmp();
+    require('node:fs').writeFileSync(require('node:path').join(root, 'config.json'), '{ not valid json');
+    expect(() => loadAgents(root)).toThrow(/not valid JSON/i);
+  });
 });
 
-// --- append to gui/test/datasource.test.js ---
 import { readAgent } from '../src/datasource.js';
 import { buildAgentDb } from './helpers.js';
 
@@ -117,7 +121,6 @@ describe('readAgent', () => {
   });
 });
 
-// --- append to gui/test/datasource.test.js ---
 import { parseLaunchctlList, getSnapshot } from '../src/datasource.js';
 
 describe('parseLaunchctlList', () => {
@@ -130,6 +133,9 @@ describe('parseLaunchctlList', () => {
   });
   it('returns unknown when the label is absent', () => {
     expect(parseLaunchctlList('123\t0\tsomething.else\n', label)).toEqual({ status: 'unknown' });
+  });
+  it('does not false-match a label that only contains the target as a substring', () => {
+    expect(parseLaunchctlList('555\t0\tuz.domo.agent-runtime-extended\n', label)).toEqual({ status: 'unknown' });
   });
 });
 

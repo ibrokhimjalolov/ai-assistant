@@ -42,8 +42,6 @@ function loadAgents(root) {
   }));
 }
 
-// --- append to gui/src/datasource.js (above module.exports) ---
-const fsExtra = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 const { agentDbPath } = require('./paths.js');
 
@@ -62,7 +60,7 @@ function durationSec(startedAt, finishedAt) {
 
 function readAgent(root, name) {
   const dbPath = agentDbPath(root, name);
-  if (!fsExtra.existsSync(dbPath)) {
+  if (!fs.existsSync(dbPath)) {
     return { name, error: 'db unavailable', detail: `not found: ${dbPath}` };
   }
   let db;
@@ -118,7 +116,6 @@ function readAgent(root, name) {
   }
 }
 
-// --- append to gui/src/datasource.js (above module.exports) ---
 const { execFileSync } = require('node:child_process');
 const { appDataRoot } = require('./paths.js');
 
@@ -126,7 +123,7 @@ const LAUNCHD_LABEL = 'uz.domo.agent-runtime';
 
 // Pure parser for `launchctl list` output. Columns are PID<TAB>STATUS<TAB>LABEL.
 function parseLaunchctlList(output, label = LAUNCHD_LABEL) {
-  const line = String(output).split('\n').find((l) => l.includes(label));
+  const line = String(output).split('\n').find((l) => l.split(/\s+/)[2] === label);
   if (!line) return { status: 'unknown' };
   const pidStr = line.split(/\s+/)[0];
   if (/^\d+$/.test(pidStr)) return { alive: true, pid: Number(pidStr) };
