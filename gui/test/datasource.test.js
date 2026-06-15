@@ -116,3 +116,43 @@ describe('readAgent', () => {
     expect(a.error).toBeTruthy();
   });
 });
+
+// --- append to gui/test/datasource.test.js ---
+import { parseLaunchctlList, getSnapshot } from '../src/datasource.js';
+
+describe('parseLaunchctlList', () => {
+  const label = 'uz.domo.agent-runtime';
+  it('returns alive+pid for a numeric PID line', () => {
+    expect(parseLaunchctlList('74264\t0\tuz.domo.agent-runtime\n', label)).toEqual({ alive: true, pid: 74264 });
+  });
+  it('returns not-alive when PID column is "-"', () => {
+    expect(parseLaunchctlList('-\t0\tuz.domo.agent-runtime\n', label)).toEqual({ alive: false });
+  });
+  it('returns unknown when the label is absent', () => {
+    expect(parseLaunchctlList('123\t0\tsomething.else\n', label)).toEqual({ status: 'unknown' });
+  });
+});
+
+describe('getSnapshot', () => {
+  it('composes daemon status and per-agent data', () => {
+    const root = tmp();
+    writeConfig(root, { telegramBotToken: 'x', whitelist: [7], agentHome: '/h' });
+    buildAgentDb(root, 'default', { tasks: [
+      { source: 'telegram', user_id: 7, chat_id: 7, prompt: 'hi', status: 'done',
+        created_at: '2026-06-15 03:00:00', started_at: '2026-06-15 03:00:00', finished_at: '2026-06-15 03:00:02' },
+    ]});
+    const snap = getSnapshot({ root, daemonStatusFn: () => ({ alive: true, pid: 999 }) });
+    expect(snap.daemon).toEqual({ alive: true, pid: 999 });
+    expect(snap.agents).toHaveLength(1);
+    expect(snap.agents[0].name).toBe('default');
+    expect(snap.agents[0].counts.done).toBe(1);
+    expect(typeof snap.generatedAt).toBe('string');
+  });
+  it('returns an error snapshot when config is bad', () => {
+    const root = tmp();
+    writeConfig(root, { nonsense: true });
+    const snap = getSnapshot({ root, daemonStatusFn: () => ({ alive: false }) });
+    expect(snap.error).toBeTruthy();
+    expect(snap.agents).toEqual([]);
+  });
+});

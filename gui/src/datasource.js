@@ -118,4 +118,45 @@ function readAgent(root, name) {
   }
 }
 
-module.exports = { ConfigError, parseSqliteTime, loadAgents, readAgent };
+// --- append to gui/src/datasource.js (above module.exports) ---
+const { execFileSync } = require('node:child_process');
+const { appDataRoot } = require('./paths.js');
+
+const LAUNCHD_LABEL = 'uz.domo.agent-runtime';
+
+// Pure parser for `launchctl list` output. Columns are PID<TAB>STATUS<TAB>LABEL.
+function parseLaunchctlList(output, label = LAUNCHD_LABEL) {
+  const line = String(output).split('\n').find((l) => l.includes(label));
+  if (!line) return { status: 'unknown' };
+  const pidStr = line.split(/\s+/)[0];
+  if (/^\d+$/.test(pidStr)) return { alive: true, pid: Number(pidStr) };
+  return { alive: false };
+}
+
+function daemonStatus(label = LAUNCHD_LABEL) {
+  try {
+    const out = execFileSync('launchctl', ['list'], { encoding: 'utf8' });
+    return parseLaunchctlList(out, label);
+  } catch (_) {
+    return { status: 'unknown' };
+  }
+}
+
+// generatedAt is stamped by the caller-injectable clock to keep this testable
+// without Date.now noise; defaults to a real ISO timestamp.
+function getSnapshot({ root = appDataRoot(), daemonStatusFn = daemonStatus, now = () => new Date().toISOString() } = {}) {
+  const daemon = daemonStatusFn();
+  let agentNames;
+  try {
+    agentNames = loadAgents(root).map((a) => a.name);
+  } catch (e) {
+    return { generatedAt: now(), daemon, agents: [], error: e.message };
+  }
+  const agents = agentNames.map((name) => readAgent(root, name));
+  return { generatedAt: now(), daemon, agents };
+}
+
+module.exports = {
+  ConfigError, parseSqliteTime, loadAgents, readAgent,
+  parseLaunchctlList, daemonStatus, getSnapshot, LAUNCHD_LABEL,
+};
