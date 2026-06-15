@@ -1,0 +1,11 @@
+#!/bin/sh
+# Per-agent isolation wrapper for agent-browser. Scopes the browser profile and
+# session to the caller's working directory (each agent's Agent Home) so agents
+# never share browser state. Override the real binary via AGENT_BROWSER_REAL
+# (used by the test). Agents call this by absolute path (launchd PATH is minimal).
+REAL="${AGENT_BROWSER_REAL:-/opt/homebrew/bin/agent-browser}"
+: "${AGENT_BROWSER_PROFILE:=$PWD/.agent-browser/profile}"
+: "${AGENT_BROWSER_SESSION:=$(basename "$PWD")}"
+export AGENT_BROWSER_PROFILE AGENT_BROWSER_SESSION
+mkdir -p "$AGENT_BROWSER_PROFILE"
+exec "$REAL" "$@"
