@@ -42,4 +42,80 @@ function loadAgents(root) {
   }));
 }
 
-module.exports = { ConfigError, parseSqliteTime, loadAgents };
+// --- append to gui/src/datasource.js (above module.exports) ---
+const fsExtra = require('node:fs');
+const { DatabaseSync } = require('node:sqlite');
+const { agentDbPath } = require('./paths.js');
+
+function truncate(s, n) {
+  if (s == null) return s;
+  const str = String(s);
+  return str.length > n ? str.slice(0, n) + '…' : str;
+}
+
+function durationSec(startedAt, finishedAt) {
+  const s = parseSqliteTime(startedAt);
+  const f = parseSqliteTime(finishedAt);
+  if (!s || !f) return null;
+  return Math.round((f.getTime() - s.getTime()) / 1000);
+}
+
+function readAgent(root, name) {
+  const dbPath = agentDbPath(root, name);
+  if (!fsExtra.existsSync(dbPath)) {
+    return { name, error: 'db unavailable', detail: `not found: ${dbPath}` };
+  }
+  let db;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+
+    const running = db.prepare(
+      `SELECT id, source, prompt, started_at FROM tasks WHERE status='running' ORDER BY id DESC LIMIT 1`
+    ).get();
+    const currentTask = running
+      ? { id: running.id, source: running.source, prompt: truncate(running.prompt, 200), startedAt: running.started_at }
+      : null;
+
+    const recentRows = db.prepare(
+      `SELECT id, source, status, prompt, started_at, finished_at FROM tasks ORDER BY id DESC LIMIT 15`
+    ).all();
+    const recentTasks = recentRows.map((r) => ({
+      id: r.id, source: r.source, status: r.status,
+      prompt: truncate(r.prompt, 80),
+      startedAt: r.started_at, finishedAt: r.finished_at,
+      durationSec: durationSec(r.started_at, r.finished_at),
+    }));
+
+    const countRows = db.prepare(`SELECT status, COUNT(*) AS c FROM tasks GROUP BY status`).all();
+    const counts = {};
+    for (const row of countRows) counts[row.status] = row.c;
+
+    const sessionRows = db.prepare(
+      `SELECT s.user_id, s.claude_session_id, s.created_at,
+              (SELECT COUNT(*) FROM tasks t WHERE t.session_id = s.claude_session_id) AS task_count
+         FROM sessions s ORDER BY s.created_at`
+    ).all();
+    const sessions = sessionRows.map((s) => ({
+      userId: s.user_id, sessionId: s.claude_session_id, createdAt: s.created_at, taskCount: s.task_count,
+    }));
+
+    const scheduleRows = db.prepare(
+      `SELECT id, cron_expr, run_at, prompt, enabled, last_run_at FROM schedules ORDER BY id`
+    ).all();
+    const schedules = scheduleRows.map((r) => ({
+      id: r.id, cronExpr: r.cron_expr, runAt: r.run_at,
+      prompt: truncate(r.prompt, 60), enabled: !!r.enabled, lastRunAt: r.last_run_at,
+    }));
+
+    const lastRow = db.prepare(`SELECT MAX(finished_at) AS m FROM tasks`).get();
+    const lastActivityAt = lastRow ? lastRow.m : null;
+
+    return { name, busy: !!currentTask, currentTask, recentTasks, counts, sessions, schedules, lastActivityAt };
+  } catch (e) {
+    return { name, error: 'db unavailable', detail: e.message };
+  } finally {
+    if (db) try { db.close(); } catch (_) { /* ignore */ }
+  }
+}
+
+module.exports = { ConfigError, parseSqliteTime, loadAgents, readAgent };
