@@ -65,6 +65,7 @@ async function runAgent(agentCfg: AgentConfig, paths: AppPaths): Promise<void> {
       agentHome: agentCfg.agentHome,
       taskTimeoutMs: agentCfg.taskTimeoutMs,
       claudeToken: agentCfg.claudeOauthToken,
+      rotateAtContextFraction: agentCfg.rotateAtContextFraction,
       mcpServersFor: (task) => runtimeMcpServer(store, task),
     });
     const startedAt = new Date();

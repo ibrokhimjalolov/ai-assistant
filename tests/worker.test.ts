@@ -3,8 +3,8 @@ import { openDb } from '../src/db.js';
 import { Store } from '../src/store.js';
 import { Policy } from '../src/policy.js';
 import { PermissionGate } from '../src/gate.js';
-import { Worker } from '../src/worker.js';
-import { UsageLimitError, type ClaudeRunner, type RunEvent } from '../src/types.js';
+import { Worker, shouldAutoRotate } from '../src/worker.js';
+import { UsageLimitError, type ClaudeRunner, type RunEvent, type RunRequest } from '../src/types.js';
 
 function runnerOf(events: RunEvent[] | (() => AsyncGenerator<RunEvent>)): ClaudeRunner {
   return {
@@ -186,5 +186,64 @@ describe('Worker', () => {
     enqueueChat();
     await w.tick();
     expect(seen).toBe('agent-tok');
+  });
+});
+
+const allowGate = { handlerFor: () => async () => ({ behavior: 'allow', updatedInput: {} }) } as any;
+function runnerYielding(events: RunEvent[]) {
+  return { async *run(_req: RunRequest) { for (const e of events) yield e; } };
+}
+
+describe('shouldAutoRotate', () => {
+  const base = { kind: 'chat' as const, contextFraction: 0.8, threshold: 0.7, rotateQueued: false };
+  it('true at/above threshold for chat tasks', () => {
+    expect(shouldAutoRotate(base)).toBe(true);
+    expect(shouldAutoRotate({ ...base, contextFraction: 0.7 })).toBe(true);
+  });
+  it('false below threshold, when disabled (0), null fraction, non-chat, or already queued', () => {
+    expect(shouldAutoRotate({ ...base, contextFraction: 0.5 })).toBe(false);
+    expect(shouldAutoRotate({ ...base, threshold: 0 })).toBe(false);
+    expect(shouldAutoRotate({ ...base, contextFraction: null })).toBe(false);
+    expect(shouldAutoRotate({ ...base, kind: 'rotate' })).toBe(false);
+    expect(shouldAutoRotate({ ...base, rotateQueued: true })).toBe(false);
+  });
+});
+
+describe('worker auto-rotation', () => {
+  it('enqueues a silent rotate after a chat task over threshold; rotate task sends nothing and drops the session', async () => {
+    const db = openDb(':memory:');
+    const store = new Store(db);
+    store.enqueueTask({ source: 'telegram', kind: 'chat', userId: 1, chatId: 1, prompt: 'hi' });
+    const runner = runnerYielding([
+      { kind: 'session', sessionId: 'sess-1' },
+      { kind: 'final', text: 'answer', contextFraction: 0.9 },
+    ]);
+    const worker = new Worker({ store, runner, gate: allowGate, agentHome: '/tmp', rotateAtContextFraction: 0.7 });
+
+    await worker.tick();                 // process the chat task
+    expect(store.getSession(1)).toBeDefined();           // session was set
+    const outAfterChat = store.unsentMessages();
+    expect(outAfterChat.map((m) => m.content)).toContain('answer');  // reply delivered
+    const rotateTasks = store.pendingTasks().filter((t) => t.kind === 'rotate');
+    expect(rotateTasks).toHaveLength(1);
+    expect(rotateTasks[0].silent).toBe(true);
+
+    const outCount = store.unsentMessages().length;
+    await worker.tick();                 // process the silent rotate task
+    expect(store.unsentMessages().length).toBe(outCount);  // NO new message (silent)
+    expect(store.getSession(1)).toBeUndefined();           // session rotated/dropped
+  });
+
+  it('does NOT rotate when under threshold', async () => {
+    const db = openDb(':memory:');
+    const store = new Store(db);
+    store.enqueueTask({ source: 'telegram', kind: 'chat', userId: 1, chatId: 1, prompt: 'hi' });
+    const runner = runnerYielding([
+      { kind: 'session', sessionId: 's' },
+      { kind: 'final', text: 'a', contextFraction: 0.3 },
+    ]);
+    const worker = new Worker({ store, runner, gate: allowGate, agentHome: '/tmp', rotateAtContextFraction: 0.7 });
+    await worker.tick();
+    expect(store.pendingTasks().filter((t) => t.kind === 'rotate')).toHaveLength(0);
   });
 });

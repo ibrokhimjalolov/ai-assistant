@@ -1,6 +1,7 @@
 import type { Store } from './store.js';
 import type { PermissionGate } from './gate.js';
-import { UsageLimitError, type ClaudeRunner, type Task } from './types.js';
+import { UsageLimitError, type ClaudeRunner, type Task, type TaskKind } from './types.js';
+import { ROTATE_PROMPT } from './commands.js';
 import { fmtTime, truncate } from './util.js';
 import { escapeHtml } from './format.js';
 import { logger } from './log.js';
@@ -17,6 +18,24 @@ export interface WorkerDeps {
   /** Per-agent Claude subscription token, forwarded to the runner. */
   claudeToken?: string;
   mcpServersFor?: (task: Task) => Record<string, unknown>;
+  /** Auto-rotate the session when context usage reaches this fraction; 0/undefined disables. */
+  rotateAtContextFraction?: number;
+}
+
+export function shouldAutoRotate(args: {
+  kind: TaskKind;
+  contextFraction: number | null | undefined;
+  threshold: number;
+  rotateQueued: boolean;
+}): boolean {
+  const { kind, contextFraction, threshold, rotateQueued } = args;
+  return (
+    kind === 'chat' &&
+    threshold > 0 &&
+    contextFraction != null &&
+    contextFraction >= threshold &&
+    !rotateQueued
+  );
 }
 
 export class Worker {
@@ -55,8 +74,9 @@ export class Worker {
       : undefined;
     log.info('task claimed', { id: task.id, userId: task.userId, kind: task.kind, source: task.source });
     try {
-      const final = await this.runOnce(task, abort.signal, true);
-      this.complete(task, final, null);
+      const { text, contextFraction } = await this.runOnce(task, abort.signal, true);
+      this.complete(task, text, null);
+      this.maybeAutoRotate(task, contextFraction);
     } catch (e) {
       if (state.timedOut) {
         this.failTimedOut(task, timeoutMs);
@@ -101,8 +121,8 @@ export class Worker {
     }
     log.warn('retrying with fresh session', { id: task.id });
     try {
-      const final = await this.runOnce(task, abort.signal, false);
-      this.complete(task, final, '⚠️ Previous conversation context was lost due to a session error.');
+      const { text } = await this.runOnce(task, abort.signal, false);
+      this.complete(task, text, '⚠️ Previous conversation context was lost due to a session error.');
     } catch (e2) {
       if (state.timedOut) { this.failTimedOut(task, this.d.taskTimeoutMs ?? 600_000); return; }
       const err = e2 ?? firstError;
@@ -113,11 +133,22 @@ export class Worker {
   }
 
   private complete(task: Task, final: string, prefixNote: string | null): void {
-    const content = prefixNote ? `${prefixNote}\n\n${final}` : final;
-    this.d.store.enqueueMessage({ chatId: task.chatId, content });
+    if (!task.silent) {
+      const content = prefixNote ? `${prefixNote}\n\n${final}` : final;
+      this.d.store.enqueueMessage({ chatId: task.chatId, content });
+    }
     this.d.store.finishTask(task.id, 'done', truncate(final, 500));
     if (task.kind === 'rotate') this.d.store.rotateSession(task.userId);
-    log.info('task done', { id: task.id });
+    log.info('task done', { id: task.id, silent: task.silent });
+  }
+
+  private maybeAutoRotate(task: Task, contextFraction: number | null): void {
+    const threshold = this.d.rotateAtContextFraction ?? 0;
+    const rotateQueued = this.d.store.pendingTasks().some((t) => t.kind === 'rotate' && t.userId === task.userId);
+    log.debug('context fraction', { userId: task.userId, contextFraction, threshold });
+    if (!shouldAutoRotate({ kind: task.kind, contextFraction, threshold, rotateQueued })) return;
+    this.d.store.enqueueTask({ source: 'telegram', kind: 'rotate', userId: task.userId, chatId: task.chatId, prompt: ROTATE_PROMPT, silent: true });
+    log.info('auto-rotating session (context threshold reached)', { userId: task.userId, contextFraction, threshold });
   }
 
   private effectivePrompt(task: Task): string {
@@ -132,9 +163,10 @@ export class Worker {
     return `[Message from Telegram user ${task.userId}]\n\n${task.prompt}`;
   }
 
-  private async runOnce(task: Task, signal: AbortSignal, useResume: boolean): Promise<string> {
+  private async runOnce(task: Task, signal: AbortSignal, useResume: boolean): Promise<{ text: string; contextFraction: number | null }> {
     const session = useResume ? this.d.store.getSession(task.userId) : undefined;
     let final = '';
+    let contextFraction: number | null = null;
     for await (const ev of this.d.runner.run({
       prompt: this.effectivePrompt(task),
       cwd: this.d.agentHome,
@@ -151,8 +183,9 @@ export class Worker {
         // progress events are intentionally ignored — the Telegram typing indicator signals activity
       } else if (ev.kind === 'final') {
         final = ev.text;
+        contextFraction = ev.contextFraction ?? null;
       }
     }
-    return final;
+    return { text: final, contextFraction };
   }
 }
