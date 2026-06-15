@@ -7,9 +7,11 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "package": "electron-packager . \"Agent Runtime Monitor\" --platform=darwin --out=dist-app --overwrite --no-asar --app-bundle-id=uz.domo.agent-runtime-monitor"
   },
   "devDependencies": {
+    "@electron/packager": "^18.3.0",
     "electron": "^35.0.0",
     "vitest": "^3.0.0"
   }
