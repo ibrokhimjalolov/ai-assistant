@@ -19,16 +19,25 @@ npm install
 npm start
 ```
 
-## Build a double-clickable app
+## Build a double-clickable app / .dmg
 ```
 cd gui
 npm install
-npm run package
+npm run dmg      # packages, ad-hoc signs, builds dist-app/Agent-Runtime-Monitor.dmg
 ```
-Produces `dist-app/Agent Runtime Monitor-darwin-<arch>/Agent Runtime Monitor.app`.
-Drag it to `/Applications` and double-click. The app is **unsigned**, so if it was
-copied/downloaded to another Mac, Gatekeeper will block the first launch —
-right-click → **Open** once to allow it. (Locally built copies launch normally.)
+`npm run package` alone produces the raw `.app`, but **use `npm run dmg`** — it
+also **ad-hoc signs** the bundle and stages with `ditto`. Both matter on Apple
+Silicon: electron-packager leaves an invalid signature on the renamed bundle, and
+`cp -R` corrupts signatures — either one makes macOS report the app as
+**"damaged and can't be opened."**
+
+The app is **not Developer-ID signed/notarized** (that needs a paid Apple
+account), so a **downloaded** copy is quarantined and the first launch needs
+**right-click → Open**, or strip the quarantine flag:
+```
+xattr -dr com.apple.quarantine "/Applications/Agent Runtime Monitor.app"
+```
+Locally built copies launch normally.
 
 ## Test
 ```

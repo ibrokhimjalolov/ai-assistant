@@ -8,7 +8,8 @@
   "scripts": {
     "start": "electron .",
     "test": "vitest run",
-    "package": "electron-packager . \"Agent Runtime Monitor\" --platform=darwin --out=dist-app --overwrite --no-asar --app-bundle-id=uz.domo.agent-runtime-monitor"
+    "package": "electron-packager . \"Agent Runtime Monitor\" --platform=darwin --out=dist-app --overwrite --no-asar --app-bundle-id=uz.domo.agent-runtime-monitor",
+    "dmg": "sh scripts/build-dmg.sh"
   },
   "devDependencies": {
     "@electron/packager": "^18.3.0",
