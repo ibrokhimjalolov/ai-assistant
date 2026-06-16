@@ -101,3 +101,29 @@ describe('loadConfig', () => {
     expect(() => loadConfig(cfgPath)).toThrow(/not valid JSON/);
   });
 });
+
+describe('rotateAtContextFraction', () => {
+  function writeCfg(obj: any): string {
+    const dir = mkdtempSync(join(tmpdir(), 'cfg-'));
+    const home = join(dir, 'home'); mkdirSync(home);
+    obj.agents[0].agentHome = home;
+    const p = join(dir, 'config.json'); writeFileSync(p, JSON.stringify(obj));
+    return p;
+  }
+  const base = () => ({ agents: [{ name: 'a', telegramBotToken: 't', whitelist: [1], agentHome: 'x' }] });
+
+  it('defaults to 0.70 when omitted', () => {
+    const cfg = loadConfig(writeCfg(base()));
+    expect(cfg.agents[0].rotateAtContextFraction).toBe(0.70);
+  });
+  it('accepts an in-range override (and 0 to disable)', () => {
+    const o = base(); o.agents[0].rotateAtContextFraction = 0;
+    expect(loadConfig(writeCfg(o)).agents[0].rotateAtContextFraction).toBe(0);
+  });
+  it('rejects out-of-range / non-number', () => {
+    const o1 = base(); o1.agents[0].rotateAtContextFraction = 1.5;
+    expect(() => loadConfig(writeCfg(o1))).toThrow(/rotateAtContextFraction/);
+    const o2 = base(); o2.agents[0].rotateAtContextFraction = 'high';
+    expect(() => loadConfig(writeCfg(o2))).toThrow(/rotateAtContextFraction/);
+  });
+});

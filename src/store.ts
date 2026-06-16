@@ -26,10 +26,10 @@ export class Store {
   }
 
   // ---- tasks ----
-  enqueueTask(t: { source: TaskSource; kind: TaskKind; userId: number; chatId: number; prompt: string }): number {
+  enqueueTask(t: { source: TaskSource; kind: TaskKind; userId: number; chatId: number; prompt: string; silent?: boolean }): number {
     const r = this.db
-      .prepare(`INSERT INTO tasks (source, kind, user_id, chat_id, prompt) VALUES (?, ?, ?, ?, ?)`)
-      .run(t.source, t.kind, t.userId, t.chatId, t.prompt);
+      .prepare(`INSERT INTO tasks (source, kind, user_id, chat_id, prompt, silent) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run(t.source, t.kind, t.userId, t.chatId, t.prompt, t.silent ? 1 : 0);
     return Number(r.lastInsertRowid);
   }
 
@@ -231,6 +231,7 @@ function toTask(row: any): Task {
     status: row.status as TaskStatus,
     sessionId: row.session_id ?? null,
     resultSummary: row.result_summary ?? null,
+    silent: row.silent === 1,
   };
 }
 

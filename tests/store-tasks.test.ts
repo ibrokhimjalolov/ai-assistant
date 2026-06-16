@@ -66,3 +66,15 @@ describe('sessions', () => {
     expect(store.getSession(7)).toBeUndefined();
   });
 });
+
+// openDb + Store are already imported at the top of this file.
+describe('silent tasks', () => {
+  it('defaults silent=false and round-trips silent=true', () => {
+    const db = openDb(':memory:');
+    const store = new Store(db);
+    const a = store.enqueueTask({ source: 'telegram', kind: 'chat', userId: 1, chatId: 1, prompt: 'hi' });
+    const b = store.enqueueTask({ source: 'telegram', kind: 'rotate', userId: 1, chatId: 1, prompt: 'x', silent: true });
+    expect(store.getTask(a)!.silent).toBe(false);
+    expect(store.getTask(b)!.silent).toBe(true);
+  });
+});

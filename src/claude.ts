@@ -1,6 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import { UsageLimitError, type ClaudeRunner, type RunEvent, type RunRequest } from './types.js';
+import { contextFractionFromUsage } from './util.js';
 
 /**
  * Appended to the agent's system prompt. The agent's replies are delivered as
@@ -96,7 +97,8 @@ export function mapSdkMessage(m: any): RunEvent | null {
     return text ? { kind: 'progress', text } : null;
   }
   if (m.type === 'result') {
-    if (m.subtype === 'success') return { kind: 'final', text: m.result || '(no output)' };
+    if (m.subtype === 'success')
+      return { kind: 'final', text: m.result || '(no output)', contextFraction: contextFractionFromUsage(m.modelUsage) };
     // Non-success result: SDK provides `errors: string[]` in real messages,
     // but the test fixture passes a plain `result` string — handle both.
     const errDetail: string = m.result ?? (Array.isArray(m.errors) ? m.errors.join('; ') : '');

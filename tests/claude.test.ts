@@ -39,7 +39,7 @@ describe('mapSdkMessage', () => {
 
   it('maps successful result to final', () => {
     expect(mapSdkMessage({ type: 'result', subtype: 'success', result: 'done!' }))
-      .toEqual({ kind: 'final', text: 'done!' });
+      .toMatchObject({ kind: 'final', text: 'done!' });
   });
 
   it('throws UsageLimitError on limit errors', () => {
@@ -63,5 +63,21 @@ describe('parseResetTime', () => {
   });
   it('returns null when unparseable', () => {
     expect(parseResetTime('limit reached', new Date())).toBeNull();
+  });
+});
+
+// mapSdkMessage is already imported at the top of this file.
+describe('mapSdkMessage contextFraction', () => {
+  it('attaches contextFraction from modelUsage on success', () => {
+    const ev = mapSdkMessage({
+      type: 'result', subtype: 'success', result: 'hi',
+      modelUsage: { m: { inputTokens: 700, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, contextWindow: 1000 } },
+    });
+    expect(ev).toMatchObject({ kind: 'final', text: 'hi' });
+    expect((ev as any).contextFraction).toBeCloseTo(0.7, 5);
+  });
+  it('contextFraction is null when modelUsage is absent', () => {
+    const ev = mapSdkMessage({ type: 'result', subtype: 'success', result: 'hi' });
+    expect((ev as any).contextFraction).toBeNull();
   });
 });

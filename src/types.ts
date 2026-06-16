@@ -12,6 +12,7 @@ export interface Task {
   status: TaskStatus;
   sessionId: string | null;
   resultSummary: string | null;
+  silent: boolean;
 }
 
 export type OutKind = 'reply' | 'edit' | 'approval' | 'proactive';
@@ -50,7 +51,7 @@ export type CanUseTool = (toolName: string, input: Record<string, unknown>) => P
 export type RunEvent =
   | { kind: 'session'; sessionId: string }
   | { kind: 'progress'; text: string }
-  | { kind: 'final'; text: string };
+  | { kind: 'final'; text: string; contextFraction?: number | null };
 
 export interface RunRequest {
   prompt: string;
