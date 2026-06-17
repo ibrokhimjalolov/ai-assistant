@@ -32,7 +32,7 @@ describe('handleApprovalCallback', () => {
   it('resolves a pending approval', async () => {
     const tid = store.enqueueTask({ source: 'telegram', kind: 'chat', userId: 11, chatId: 11, prompt: 'p' });
     const task = store.getTask(tid)!;
-    const pending = gate.check(task, 'Bash', { command: 'sudo x' });
+    const pending = gate.check(task, 'mcp__mytelegram__send_message', { to: 'x', text: 'hi' });
     const approvalMsg = store.unsentMessages().find((m) => m.kind === 'approval')!;
     const approvalId = Number(JSON.parse(approvalMsg.replyMarkup!).inline_keyboard[0][0].callback_data.split(':')[1]);
     const answers: string[] = [];
@@ -79,7 +79,7 @@ describe('handleResumeCallback', () => {
   it('rejects approval from a different user', async () => {
     const tid = store.enqueueTask({ source: 'telegram', kind: 'chat', userId: 11, chatId: 11, prompt: 'p' });
     const task = store.getTask(tid)!;
-    const pending = gate.check(task, 'Bash', { command: 'sudo x' });
+    const pending = gate.check(task, 'mcp__mytelegram__send_message', { to: 'x', text: 'hi' });
     const msg = store.unsentMessages().find((m) => m.kind === 'approval')!;
     const approvalId = Number(JSON.parse(msg.replyMarkup!).inline_keyboard[0][0].callback_data.split(':')[1]);
     const answers: string[] = [];

@@ -10,7 +10,7 @@ import { Worker } from './worker.js';
 import { Sender } from './sender.js';
 import { Scheduler } from './scheduler.js';
 import { runtimeMcpServer } from './tools.js';
-import { scaffoldAgentHome } from './agent-home.js';
+import { scaffoldAgentHome, ensureProjectMcpSettings } from './agent-home.js';
 import { recoverInterrupted } from './recovery.js';
 import { buildBot, GrammyTelegramApi } from './telegram.js';
 import { maybeBackup } from './backup.js';
@@ -54,6 +54,7 @@ async function runAgent(agentCfg: AgentConfig, paths: AppPaths): Promise<void> {
     const ap = agentPaths(paths.root, agentCfg.name);
     ensureAgentData(ap);
     scaffoldAgentHome(agentCfg.agentHome);
+    if (ensureProjectMcpSettings(agentCfg.agentHome)) alog.info('ensured .claude/settings.json (enableAllProjectMcpServers)');
 
     const db = openDb(ap.dbPath);
     const store = new Store(db);

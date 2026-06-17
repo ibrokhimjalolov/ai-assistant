@@ -28,23 +28,23 @@ async function until(cond: () => boolean, ms = 1000): Promise<void> {
 }
 
 describe('pipeline: telegram in → worker → approval → telegram out', () => {
-  it('runs a risky task end-to-end with user approval', async () => {
+  it('runs a gated outbound send end-to-end with user approval', async () => {
     const store = new Store(openDb(':memory:'));
     const api = new FakeApi();
     const sender = new Sender(store, api);
     const gate = new PermissionGate(store, new Policy('/home', []), 2000);
-    // fake agent: asks permission for a risky command, then reports
+    // fake agent: asks permission for an outbound send (a gated tool), then reports
     const runner: ClaudeRunner = {
       async *run(req) {
         yield { kind: 'session', sessionId: 's1' };
-        const r = await req.canUseTool('Bash', { command: 'rm -rf /tmp/cache' });
-        yield { kind: 'final', text: r.behavior === 'allow' ? 'cleaned the cache' : `refused: ${r.message}` };
+        const r = await req.canUseTool('mcp__mytelegram__send_message', { to: 'Ali', text: 'on my way' });
+        yield { kind: 'final', text: r.behavior === 'allow' ? 'Sent to Ali.' : `refused: ${r.message}` };
       },
     };
     const worker = new Worker({ store, runner, gate, agentHome: '/home' });
 
     // 1. message arrives and is durably queued
-    const r = intakeMessage(store, { updateId: 1, userId: 11, chatId: 11, text: 'clean the cache' });
+    const r = intakeMessage(store, { updateId: 1, userId: 11, chatId: 11, text: 'tell Ali I am on my way' });
     expect(r.queued).toBe(true);
 
     // 2. worker starts; gate blocks on approval
@@ -61,7 +61,7 @@ describe('pipeline: telegram in → worker → approval → telegram out', () =>
     // 4. task completes; final answer delivered
     await ticking;
     await sender.drainOnce();
-    expect(api.sent.some((m) => m.text === 'cleaned the cache')).toBe(true);
+    expect(api.sent.some((m) => m.text === 'Sent to Ali.')).toBe(true);
     expect(store.getTask(r.taskId!)?.status).toBe('done');
     expect(store.getApproval(approvalId)?.decision).toBe('approved');
   });

@@ -17,7 +17,9 @@ export class PermissionGate {
 
   async check(task: Task, toolName: string, input: Record<string, unknown>): Promise<PermissionResult> {
     const rendered = renderInput(input);
-    if (this.policy.isSafe(toolName, input)) {
+    // Allow-by-default posture: auto-approve everything except the gated send tools.
+    // (To re-tighten to the strict allow-list, use `!this.policy.isSafe(toolName, input)`.)
+    if (!this.policy.requiresApproval(toolName)) {
       this.store.createApproval(task.id, toolName, rendered, 'auto_approved');
       log.debug('auto-approved', { taskId: task.id, tool: toolName, input: rendered });
       return { behavior: 'allow', updatedInput: input };

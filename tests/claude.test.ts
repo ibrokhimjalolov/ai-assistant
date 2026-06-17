@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapSdkMessage, parseResetTime, formatSpawnError, TELEGRAM_OUTPUT_INSTRUCTION } from '../src/claude.js';
+import { mapSdkMessage, parseResetTime, formatSpawnError, TELEGRAM_OUTPUT_INSTRUCTION, MEMORY_DISCIPLINE_INSTRUCTION } from '../src/claude.js';
 import { UsageLimitError } from '../src/types.js';
 
 describe('TELEGRAM_OUTPUT_INSTRUCTION', () => {
@@ -11,6 +11,30 @@ describe('TELEGRAM_OUTPUT_INSTRUCTION', () => {
 
   it('explicitly forbids the **bold** markdown the model defaults to', () => {
     expect(TELEGRAM_OUTPUT_INSTRUCTION).toContain('**');
+  });
+});
+
+describe('MEMORY_DISCIPLINE_INSTRUCTION', () => {
+  it('forbids storing/acting on operational facts about how the agent works', () => {
+    expect(MEMORY_DISCIPLINE_INSTRUCTION.toLowerCase()).toContain('memory');
+    expect(MEMORY_DISCIPLINE_INSTRUCTION).toMatch(/NEVER (store|act)/);
+    // states the trust hierarchy: system prompt > CLAUDE.md > memory
+    expect(MEMORY_DISCIPLINE_INSTRUCTION).toContain('CLAUDE.md');
+  });
+
+  it('states that replies need no tool and bans bare status answers', () => {
+    expect(MEMORY_DISCIPLINE_INSTRUCTION.toLowerCase()).toContain('automatically');
+    expect(MEMORY_DISCIPLINE_INSTRUCTION).toContain('Отправлено');
+    expect(MEMORY_DISCIPLINE_INSTRUCTION.toLowerCase()).toContain('recipient');
+  });
+
+  it('distinguishes the reply BOT channel from the user-account Telegram tool', () => {
+    // both surfaces are "Telegram" — the instruction must separate them so the agent
+    // cannot conflate "reply" with "send via the account tool" (the 2026-06-18 bug).
+    // Phrased functionally (not by server name) so it survives an .mcp.json rename.
+    expect(MEMORY_DISCIPLINE_INSTRUCTION.toLowerCase()).toContain('bot');
+    expect(MEMORY_DISCIPLINE_INSTRUCTION).toMatch(/own Telegram account/i);
+    expect(MEMORY_DISCIPLINE_INSTRUCTION).toMatch(/SEPARATE/);
   });
 });
 

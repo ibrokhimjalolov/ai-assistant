@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const CLAUDE_MD = `# Personal Agent
@@ -35,5 +35,36 @@ export function scaffoldAgentHome(dir: string): boolean {
   mkdirSync(join(dir, 'memory'), { recursive: true });
   writeFileSync(join(dir, 'CLAUDE.md'), CLAUDE_MD);
   writeFileSync(join(dir, 'memory', 'README.md'), MEMORY_README);
+  return true;
+}
+
+/**
+ * Ensure <agentHome>/.claude/settings.json has `enableAllProjectMcpServers: true`,
+ * without clobbering anything else. Required because the headless daemon loads
+ * project/local settings only (see claude.ts settingSources) and won't connect an
+ * agent's .mcp.json servers otherwise (known issue #9). Idempotent — safe to run on
+ * every startup; covers existing agent homes, not just freshly scaffolded ones.
+ *
+ * The same file's `permissions.ask` list is the operator-tunable input to the
+ * approval gate (read by Policy, additive over the built-in outbound-send floor).
+ *
+ * Returns true if it wrote a change. If the file exists but is unparsable, it is
+ * left untouched (returns false) rather than risk clobbering hand-edited settings.
+ */
+export function ensureProjectMcpSettings(dir: string): boolean {
+  const claudeDir = join(dir, '.claude');
+  const file = join(claudeDir, 'settings.json');
+  let settings: Record<string, unknown> = {};
+  if (existsSync(file)) {
+    try {
+      settings = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    } catch {
+      return false; // don't overwrite a file we can't safely parse
+    }
+  }
+  if (settings.enableAllProjectMcpServers === true) return false;
+  settings.enableAllProjectMcpServers = true;
+  mkdirSync(claudeDir, { recursive: true });
+  writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
   return true;
 }

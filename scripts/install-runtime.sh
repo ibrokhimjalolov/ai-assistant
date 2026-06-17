@@ -61,6 +61,31 @@ cat > "$PLIST" <<PLIST_EOF
 </plist>
 PLIST_EOF
 
+echo "==> 5.5/6 ensuring .claude/settings.json (enableAllProjectMcpServers) for configured agents"
+# Project MCP servers (.mcp.json) only connect under the headless daemon when the
+# agent home's .claude/settings.json sets this (settingSources = project/local). The
+# daemon also ensures this per agent on startup; doing it here makes it true at first
+# boot too. Idempotent; skipped if config.json isn't present yet.
+if [ -f "$ROOT/config.json" ]; then
+  "$NODE_BIN" -e '
+    const fs=require("fs"),path=require("path");
+    let cfg; try{cfg=JSON.parse(fs.readFileSync(process.argv[1],"utf8"))}catch(e){process.exit(0)}
+    const agents=Array.isArray(cfg.agents)?cfg.agents:(cfg.agentHome?[cfg]:[]);
+    for(const a of agents){
+      const home=a&&a.agentHome; if(!home) continue;
+      const dir=path.join(home,".claude"), f=path.join(dir,"settings.json");
+      let s={}; if(fs.existsSync(f)){try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){continue}}
+      if(s.enableAllProjectMcpServers===true) continue;
+      s.enableAllProjectMcpServers=true;
+      fs.mkdirSync(dir,{recursive:true});
+      fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n");
+      console.log("    set enableAllProjectMcpServers in "+f);
+    }
+  ' "$ROOT/config.json" || true
+else
+  echo "    (no config.json yet — the daemon will ensure this per agent on startup)"
+fi
+
 echo "==> 6/6 starting service"
 launchctl load -w "$PLIST"
 sleep 3
