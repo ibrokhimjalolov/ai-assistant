@@ -112,13 +112,13 @@ describe('rotateAtContextFraction', () => {
   }
   const base = () => ({ agents: [{ name: 'a', telegramBotToken: 't', whitelist: [1], agentHome: 'x' }] });
 
-  it('defaults to 0.70 when omitted', () => {
+  it('defaults to 0 (disabled) when omitted — native auto-compaction is primary', () => {
     const cfg = loadConfig(writeCfg(base()));
-    expect(cfg.agents[0].rotateAtContextFraction).toBe(0.70);
+    expect(cfg.agents[0].rotateAtContextFraction).toBe(0);
   });
-  it('accepts an in-range override (and 0 to disable)', () => {
-    const o = base(); o.agents[0].rotateAtContextFraction = 0;
-    expect(loadConfig(writeCfg(o)).agents[0].rotateAtContextFraction).toBe(0);
+  it('accepts an in-range override to re-enable the old teardown', () => {
+    const o = base(); o.agents[0].rotateAtContextFraction = 0.85;
+    expect(loadConfig(writeCfg(o)).agents[0].rotateAtContextFraction).toBe(0.85);
   });
   it('rejects out-of-range / non-number', () => {
     const o1 = base(); o1.agents[0].rotateAtContextFraction = 1.5;

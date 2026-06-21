@@ -51,6 +51,7 @@ export type CanUseTool = (toolName: string, input: Record<string, unknown>) => P
 export type RunEvent =
   | { kind: 'session'; sessionId: string }
   | { kind: 'progress'; text: string }
+  | { kind: 'compaction'; trigger: string; preTokens: number | null; postTokens: number | null }
   | { kind: 'final'; text: string; contextFraction?: number | null };
 
 export interface RunRequest {

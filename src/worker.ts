@@ -181,6 +181,10 @@ export class Worker {
         this.d.store.attachSession(task.id, ev.sessionId);
         log.debug('session attached', { taskId: task.id, sessionId: ev.sessionId });
         // progress events are intentionally ignored — the Telegram typing indicator signals activity
+      } else if (ev.kind === 'compaction') {
+        log.info('context auto-compacted', {
+          taskId: task.id, trigger: ev.trigger, preTokens: ev.preTokens, postTokens: ev.postTokens,
+        });
       } else if (ev.kind === 'final') {
         final = ev.text;
         contextFraction = ev.contextFraction ?? null;

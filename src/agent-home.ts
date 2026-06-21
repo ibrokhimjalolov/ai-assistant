@@ -39,14 +39,20 @@ export function scaffoldAgentHome(dir: string): boolean {
 }
 
 /**
- * Ensure <agentHome>/.claude/settings.json has `enableAllProjectMcpServers: true`,
- * without clobbering anything else. Required because the headless daemon loads
- * project/local settings only (see claude.ts settingSources) and won't connect an
- * agent's .mcp.json servers otherwise (known issue #9). Idempotent — safe to run on
- * every startup; covers existing agent homes, not just freshly scaffolded ones.
+ * Ensure <agentHome>/.claude/settings.json has the daemon's required defaults,
+ * without clobbering anything else:
+ *  - `enableAllProjectMcpServers: true` — the headless daemon loads project/local
+ *    settings only (see claude.ts settingSources) and won't connect an agent's
+ *    .mcp.json servers otherwise (known issue #9).
+ *  - `autoCompactEnabled: true` — let the SDK compact the conversation in place
+ *    when context fills, so the thread stays coherent instead of hitting the
+ *    context limit. This is now the primary context-management mechanism (the
+ *    custom session rotation is disabled by default; see config.ts).
  *
- * The same file's `permissions.ask` list is the operator-tunable input to the
- * approval gate (read by Policy, additive over the built-in outbound-send floor).
+ * Idempotent — safe to run on every startup; covers existing agent homes, not just
+ * freshly scaffolded ones. The same file's `permissions.ask` list is the
+ * operator-tunable input to the approval gate (read by Policy, additive over the
+ * built-in outbound-send floor).
  *
  * Returns true if it wrote a change. If the file exists but is unparsable, it is
  * left untouched (returns false) rather than risk clobbering hand-edited settings.
@@ -62,8 +68,16 @@ export function ensureProjectMcpSettings(dir: string): boolean {
       return false; // don't overwrite a file we can't safely parse
     }
   }
-  if (settings.enableAllProjectMcpServers === true) return false;
-  settings.enableAllProjectMcpServers = true;
+  let changed = false;
+  if (settings.enableAllProjectMcpServers !== true) {
+    settings.enableAllProjectMcpServers = true;
+    changed = true;
+  }
+  if (settings.autoCompactEnabled !== true) {
+    settings.autoCompactEnabled = true;
+    changed = true;
+  }
+  if (!changed) return false;
   mkdirSync(claudeDir, { recursive: true });
   writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
   return true;
