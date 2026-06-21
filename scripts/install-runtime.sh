@@ -8,7 +8,7 @@
 # — fill that in first at ~/Library/Application Support/agent-runtime/config.json.
 set -eu
 
-TARBALL_URL="https://github.com/ibrokhimjalolov/ai-assistant/releases/download/runtime-v1.2.0/agent-runtime-dist.tar.gz"
+TARBALL_URL="https://github.com/ibrokhimjalolov/ai-assistant/releases/download/runtime-v1.3.0/agent-runtime-dist.tar.gz"
 LABEL="uz.domo.agent-runtime"
 APP_DIR="$HOME/agent-runtime-app"
 ROOT="$HOME/Library/Application Support/agent-runtime"
