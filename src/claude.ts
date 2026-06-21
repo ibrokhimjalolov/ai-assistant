@@ -64,6 +64,39 @@ record a different version of this):
   "Sent", "Отправлено", or "Done" — say what you did and to whom, in words.
 `.trim();
 
+/**
+ * Appended to the agent's system prompt. The agent runs under the `claude_code`
+ * system-prompt preset, so it identifies AS Claude Code — for which the canonical
+ * way to "schedule a recurring agent task" is the `/schedule` cloud-routines skill.
+ * That skill/service is NOT wired into this runtime (settingSources excludes user
+ * scope; the only scheduling surface is the in-process `runtime` MCP server —
+ * schedule_create / reminder_create / schedule_list / schedule_delete). Pulled by
+ * the preset, the agent otherwise reaches for the non-existent cloud scheduler and
+ * FABRICATES a "couldn't connect, try again / use /schedule" failure instead of
+ * calling schedule_create (observed 2026-06-21 on the aiBEK agent) — same
+ * fabrication class as the 2026-06-11/18 incidents. This append forces it onto the
+ * real tools.
+ */
+export const SCHEDULING_DISCIPLINE_INSTRUCTION = `
+## Scheduling (IMPORTANT)
+
+You schedule work ONLY through your runtime tools, which are ALWAYS available here:
+- schedule_create — RECURRING jobs (standard 5-field cron), e.g. "every morning at 7:30".
+- reminder_create — ONE-TIME reminders (delay_seconds, or at = ISO-8601 / HH:MM).
+- schedule_list / schedule_delete — review and remove them.
+
+There is NO "cloud scheduler", no routines/cron cloud service, and no /schedule
+command in this runtime. NEVER mention any of them, NEVER claim a scheduler is
+unavailable, and NEVER tell the user to "try again", to wait for a scheduler to
+"connect", or to run /schedule — none of that exists here, so saying so is a
+fabricated failure.
+
+When a user asks to schedule something or to be reminded, call schedule_create /
+reminder_create directly, then confirm with the concrete result — the schedule or
+reminder id and exactly when it will run. If a required detail is missing or the
+time is ambiguous, ASK. Never fabricate either success or failure.
+`.trim();
+
 export class SdkClaudeRunner implements ClaudeRunner {
   async *run(req: RunRequest): AsyncIterable<RunEvent> {
     const abortController = new AbortController();
@@ -102,7 +135,7 @@ export class SdkClaudeRunner implements ClaudeRunner {
         systemPrompt: {
           type: 'preset',
           preset: 'claude_code',
-          append: [TELEGRAM_OUTPUT_INSTRUCTION, MEMORY_DISCIPLINE_INSTRUCTION].join('\n\n'),
+          append: [TELEGRAM_OUTPUT_INSTRUCTION, MEMORY_DISCIPLINE_INSTRUCTION, SCHEDULING_DISCIPLINE_INSTRUCTION].join('\n\n'),
         },
         abortController,
         // The SDK's CanUseTool receives a third `options` argument (signal, toolUseID, etc.)

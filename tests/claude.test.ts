@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapSdkMessage, parseResetTime, formatSpawnError, TELEGRAM_OUTPUT_INSTRUCTION, MEMORY_DISCIPLINE_INSTRUCTION } from '../src/claude.js';
+import { mapSdkMessage, parseResetTime, formatSpawnError, TELEGRAM_OUTPUT_INSTRUCTION, MEMORY_DISCIPLINE_INSTRUCTION, SCHEDULING_DISCIPLINE_INSTRUCTION } from '../src/claude.js';
 import { UsageLimitError } from '../src/types.js';
 
 describe('TELEGRAM_OUTPUT_INSTRUCTION', () => {
@@ -35,6 +35,27 @@ describe('MEMORY_DISCIPLINE_INSTRUCTION', () => {
     expect(MEMORY_DISCIPLINE_INSTRUCTION.toLowerCase()).toContain('bot');
     expect(MEMORY_DISCIPLINE_INSTRUCTION).toMatch(/own Telegram account/i);
     expect(MEMORY_DISCIPLINE_INSTRUCTION).toMatch(/SEPARATE/);
+  });
+});
+
+describe('SCHEDULING_DISCIPLINE_INSTRUCTION', () => {
+  it('points the agent at the runtime scheduling tools', () => {
+    expect(SCHEDULING_DISCIPLINE_INSTRUCTION).toContain('schedule_create');
+    expect(SCHEDULING_DISCIPLINE_INSTRUCTION).toContain('reminder_create');
+  });
+
+  it('forbids the hallucinated cloud scheduler / /schedule deflection', () => {
+    // the 2026-06-21 aiBEK bug: agent invented a "cloud scheduler" and told the
+    // user to retry / run /schedule instead of calling schedule_create.
+    expect(SCHEDULING_DISCIPLINE_INSTRUCTION.toLowerCase()).toContain('cloud scheduler');
+    expect(SCHEDULING_DISCIPLINE_INSTRUCTION).toContain('/schedule');
+    expect(SCHEDULING_DISCIPLINE_INSTRUCTION).toMatch(/NEVER/);
+  });
+
+  it('bans fabricating a scheduler failure/unavailability', () => {
+    expect(SCHEDULING_DISCIPLINE_INSTRUCTION.toLowerCase()).toContain('unavailable');
+    expect(SCHEDULING_DISCIPLINE_INSTRUCTION.toLowerCase()).toContain('try again');
+    expect(SCHEDULING_DISCIPLINE_INSTRUCTION.toLowerCase()).toContain('fabricate');
   });
 });
 

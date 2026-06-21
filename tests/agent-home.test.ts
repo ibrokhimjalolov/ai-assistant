@@ -13,6 +13,10 @@ describe('scaffoldAgentHome', () => {
     const md = readFileSync(join(dir, 'CLAUDE.md'), 'utf8');
     expect(md).toContain('memory/');
     expect(md).toContain('Telegram');
+    // scheduling guidance points at the runtime tools, not a cloud scheduler
+    expect(md).toContain('schedule_create');
+    expect(md).toContain('reminder_create');
+    expect(md.toLowerCase()).toContain('no cloud');
   });
 
   it('does not touch a folder that already has CLAUDE.md', () => {

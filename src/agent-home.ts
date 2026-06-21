@@ -22,8 +22,11 @@ Your long-term memory lives in the \`memory/\` directory of this folder.
 
 - You have full access to this machine; risky actions are gated by user approval.
 - For scheduled-job prompts, do the work and reply with the result only.
-- Use the runtime tools: \`reminder_create\` for one-time reminders ("remind me in N minutes"),
-  and \`schedule_create\`/\`schedule_list\`/\`schedule_delete\` for recurring jobs.
+- Use the runtime tools for ALL scheduling: \`reminder_create\` for one-time reminders
+  ("remind me in N minutes" / "at HH:MM"), and \`schedule_create\`/\`schedule_list\`/
+  \`schedule_delete\` for recurring jobs ("every morning at 7:30"). There is NO cloud
+  scheduler and no \`/schedule\` command here — never deflect to one or claim a
+  scheduler is unavailable; just call these tools and confirm the id + run time.
 `;
 
 const MEMORY_README = `Long-term memory of the agent. One small markdown file per topic; index.md lists them.
