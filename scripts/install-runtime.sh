@@ -8,7 +8,7 @@
 # — fill that in first at ~/Library/Application Support/agent-runtime/config.json.
 set -eu
 
-TARBALL_URL="https://github.com/ibrokhimjalolov/ai-assistant/releases/download/runtime-v1.0.0/agent-runtime-dist.tar.gz"
+TARBALL_URL="https://github.com/ibrokhimjalolov/ai-assistant/releases/download/runtime-v1.2.0/agent-runtime-dist.tar.gz"
 LABEL="uz.domo.agent-runtime"
 APP_DIR="$HOME/agent-runtime-app"
 ROOT="$HOME/Library/Application Support/agent-runtime"
@@ -61,11 +61,14 @@ cat > "$PLIST" <<PLIST_EOF
 </plist>
 PLIST_EOF
 
-echo "==> 5.5/6 ensuring .claude/settings.json (enableAllProjectMcpServers) for configured agents"
-# Project MCP servers (.mcp.json) only connect under the headless daemon when the
-# agent home's .claude/settings.json sets this (settingSources = project/local). The
-# daemon also ensures this per agent on startup; doing it here makes it true at first
-# boot too. Idempotent; skipped if config.json isn't present yet.
+echo "==> 5.5/6 ensuring .claude/settings.json (enableAllProjectMcpServers, autoCompactEnabled) for configured agents"
+# Two daemon-required settings, loaded via settingSources = project/local:
+#   - enableAllProjectMcpServers: project .mcp.json servers only connect under the
+#     headless daemon when this is set.
+#   - autoCompactEnabled: let the SDK compact the conversation in place instead of
+#     dropping the session (custom rotation is off by default).
+# The daemon also ensures both per agent on startup; doing it here makes them true at
+# first boot too. Idempotent; skipped if config.json isn't present yet.
 if [ -f "$ROOT/config.json" ]; then
   "$NODE_BIN" -e '
     const fs=require("fs"),path=require("path");
@@ -75,11 +78,13 @@ if [ -f "$ROOT/config.json" ]; then
       const home=a&&a.agentHome; if(!home) continue;
       const dir=path.join(home,".claude"), f=path.join(dir,"settings.json");
       let s={}; if(fs.existsSync(f)){try{s=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){continue}}
-      if(s.enableAllProjectMcpServers===true) continue;
-      s.enableAllProjectMcpServers=true;
+      let changed=false;
+      if(s.enableAllProjectMcpServers!==true){s.enableAllProjectMcpServers=true;changed=true;}
+      if(s.autoCompactEnabled!==true){s.autoCompactEnabled=true;changed=true;}
+      if(!changed) continue;
       fs.mkdirSync(dir,{recursive:true});
       fs.writeFileSync(f,JSON.stringify(s,null,2)+"\n");
-      console.log("    set enableAllProjectMcpServers in "+f);
+      console.log("    ensured enableAllProjectMcpServers + autoCompactEnabled in "+f);
     }
   ' "$ROOT/config.json" || true
 else
