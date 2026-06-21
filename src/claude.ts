@@ -135,6 +135,18 @@ export function formatSpawnError(err: unknown, stderr: string): string {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapSdkMessage(m: any): RunEvent | null {
   if (m.type === 'system' && m.subtype === 'init') return { kind: 'session', sessionId: m.session_id };
+  // The SDK emits this when it auto-compacts the conversation in place (it summarizes
+  // older turns and continues on the SAME session). We surface it purely for logging
+  // so we can confirm native compaction is actually firing in headless mode.
+  if (m.type === 'system' && m.subtype === 'compact_boundary') {
+    const meta = m.compact_metadata ?? {};
+    return {
+      kind: 'compaction',
+      trigger: typeof meta.trigger === 'string' ? meta.trigger : 'unknown',
+      preTokens: Number.isFinite(meta.pre_tokens) ? meta.pre_tokens : null,
+      postTokens: Number.isFinite(meta.post_tokens) ? meta.post_tokens : null,
+    };
+  }
   if (m.type === 'assistant') {
     const text = (m.message?.content ?? [])
       .filter((b: any) => b.type === 'text')

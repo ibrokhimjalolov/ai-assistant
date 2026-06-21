@@ -35,7 +35,11 @@ const AGENT_DEFAULTS = {
   approvalTimeoutMs: 900_000,
   taskTimeoutMs: 600_000,
   bashAllowlist: DEFAULT_BASH_ALLOWLIST,
-  rotateAtContextFraction: 0.70,
+  // Custom session rotation is OFF by default — the SDK's native auto-compaction
+  // (autoCompactEnabled, ensured per agent home in agent-home.ts) keeps the
+  // conversation coherent in place instead of dropping the session and losing the
+  // thread. Set rotateAtContextFraction > 0 per agent to re-enable the old teardown.
+  rotateAtContextFraction: 0,
 };
 
 const TEMPLATE = {

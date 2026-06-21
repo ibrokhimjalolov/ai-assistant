@@ -54,7 +54,7 @@ async function runAgent(agentCfg: AgentConfig, paths: AppPaths): Promise<void> {
     const ap = agentPaths(paths.root, agentCfg.name);
     ensureAgentData(ap);
     scaffoldAgentHome(agentCfg.agentHome);
-    if (ensureProjectMcpSettings(agentCfg.agentHome)) alog.info('ensured .claude/settings.json (enableAllProjectMcpServers)');
+    if (ensureProjectMcpSettings(agentCfg.agentHome)) alog.info('ensured .claude/settings.json (enableAllProjectMcpServers, autoCompactEnabled)');
 
     const db = openDb(ap.dbPath);
     const store = new Store(db);

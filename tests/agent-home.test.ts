@@ -24,11 +24,12 @@ describe('scaffoldAgentHome', () => {
 });
 
 describe('ensureProjectMcpSettings', () => {
-  it('creates .claude/settings.json with enableAllProjectMcpServers when missing', () => {
+  it('creates .claude/settings.json with enableAllProjectMcpServers + autoCompactEnabled when missing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'home-'));
     expect(ensureProjectMcpSettings(dir)).toBe(true);
     const s = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
     expect(s.enableAllProjectMcpServers).toBe(true);
+    expect(s.autoCompactEnabled).toBe(true);
   });
 
   it('is idempotent and preserves existing settings (incl. permissions.ask)', () => {
@@ -38,12 +39,23 @@ describe('ensureProjectMcpSettings', () => {
       join(dir, '.claude', 'settings.json'),
       JSON.stringify({ permissions: { ask: ['mcp__whoop__*'] }, model: 'opus' }),
     );
-    expect(ensureProjectMcpSettings(dir)).toBe(true); // added the flag
+    expect(ensureProjectMcpSettings(dir)).toBe(true); // added the flags
     const s1 = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
     expect(s1.enableAllProjectMcpServers).toBe(true);
+    expect(s1.autoCompactEnabled).toBe(true);
     expect(s1.model).toBe('opus');                     // untouched
     expect(s1.permissions.ask).toEqual(['mcp__whoop__*']);
     expect(ensureProjectMcpSettings(dir)).toBe(false);  // already set → no change
+  });
+
+  it('adds autoCompactEnabled even when enableAllProjectMcpServers is already set', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'home-'));
+    mkdirSync(join(dir, '.claude'), { recursive: true });
+    writeFileSync(join(dir, '.claude', 'settings.json'), JSON.stringify({ enableAllProjectMcpServers: true }));
+    expect(ensureProjectMcpSettings(dir)).toBe(true); // adds the missing autoCompactEnabled
+    const s = JSON.parse(readFileSync(join(dir, '.claude', 'settings.json'), 'utf8'));
+    expect(s.autoCompactEnabled).toBe(true);
+    expect(ensureProjectMcpSettings(dir)).toBe(false); // now both set → no change
   });
 
   it('leaves an unparsable settings.json untouched', () => {

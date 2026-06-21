@@ -61,6 +61,21 @@ describe('mapSdkMessage', () => {
     expect(mapSdkMessage(m)).toEqual({ kind: 'progress', text: 'thinking…' });
   });
 
+  it('maps a compact_boundary system message to a compaction event', () => {
+    expect(
+      mapSdkMessage({
+        type: 'system',
+        subtype: 'compact_boundary',
+        compact_metadata: { trigger: 'auto', pre_tokens: 150000, post_tokens: 42000 },
+      }),
+    ).toEqual({ kind: 'compaction', trigger: 'auto', preTokens: 150000, postTokens: 42000 });
+  });
+
+  it('maps a compact_boundary with missing metadata to safe defaults', () => {
+    expect(mapSdkMessage({ type: 'system', subtype: 'compact_boundary' }))
+      .toEqual({ kind: 'compaction', trigger: 'unknown', preTokens: null, postTokens: null });
+  });
+
   it('maps successful result to final', () => {
     expect(mapSdkMessage({ type: 'result', subtype: 'success', result: 'done!' }))
       .toMatchObject({ kind: 'final', text: 'done!' });
