@@ -1,10 +1,14 @@
 import { Bot, type Api, type Context, type NextFunction } from 'grammy';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { AgentConfig } from './config.js';
 import type { Store } from './store.js';
 import type { PermissionGate } from './gate.js';
 import type { Worker } from './worker.js';
 import type { TelegramApi } from './sender.js';
 import { intakeMessage } from './intake.js';
+import { extractMediaFile, buildMediaPrompt, mediaDestPath } from './media.js';
+import { transcribeAudio } from './transcribe.js';
 import { statusText, queueText, newConversation, schedulesText } from './commands.js';
 import { htmlToPlain } from './format.js';
 import { logger } from './log.js';
@@ -57,6 +61,83 @@ export async function handleResumeCallback(store: Store, ctx: Context & { match:
   }
 }
 
+/** Download a Telegram file (resolved via getFile) to a local path. Bot API caps this at 20 MB. */
+async function downloadTelegramFile(api: Api, botToken: string, fileId: string, destPath: string): Promise<void> {
+  const file = await api.getFile(fileId);
+  if (!file.file_path) throw new Error('Telegram returned no file_path (file may exceed the 20 MB bot download limit)');
+  const res = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`);
+  if (!res.ok) throw new Error(`Telegram file download failed: HTTP ${res.status}`);
+  await writeFile(destPath, Buffer.from(await res.arrayBuffer()));
+}
+
+/**
+ * Ingest a non-text Telegram message (photo, document, voice, audio, video, video_note):
+ * download the file into the agent's incoming/ dir, transcribe audio locally via whisper.cpp,
+ * then enqueue a normal chat task whose prompt hands the agent the local path (images/PDF/docs
+ * it opens with Read/skills) or the transcript (voice/audio). Deduped by update_id BEFORE the
+ * download so a re-delivered update is never fetched or transcribed twice.
+ */
+export async function ingestMedia(ctx: Context, cfg: AgentConfig, store: Store): Promise<void> {
+  const msg = ctx.message;
+  const from = ctx.from;
+  const chat = ctx.chat;
+  if (!msg || !from || !chat) return;
+  const media = extractMediaFile(msg);
+  if (!media) return;
+
+  const updateId = ctx.update.update_id;
+  if (!store.recordUpdate(updateId, JSON.stringify({ updateId, kind: media.kind }))) {
+    log.warn('duplicate media update ignored', { updateId });
+    return;
+  }
+
+  const incoming = join(cfg.agentHome, 'incoming');
+  const dest = mediaDestPath(cfg.agentHome, updateId, media.fileName);
+  try {
+    await mkdir(incoming, { recursive: true });
+    await ctx.api.sendChatAction(chat.id, 'typing').catch(() => {});
+    await downloadTelegramFile(ctx.api, cfg.telegramBotToken, media.fileId, dest);
+  } catch (e) {
+    log.error('media download failed', { updateId, kind: media.kind, error: String(e) });
+    store.enqueueMessage({
+      chatId: chat.id,
+      content: "⚠️ I couldn't download that file from Telegram (files over 20 MB can't be fetched by bots). Try a smaller file.",
+    });
+    store.markProcessed(updateId);
+    return;
+  }
+
+  let transcript: string | undefined;
+  let transcribeError: string | undefined;
+  if (media.isAudio) {
+    try {
+      transcript = await transcribeAudio(dest, {
+        whisperBin: cfg.whisperBin,
+        modelPath: cfg.whisperModel,
+        workDir: incoming,
+        ffmpegBin: cfg.ffmpegBin,
+        language: cfg.transcribeLanguage,
+      });
+      if (!transcript) transcribeError = 'no speech detected';
+    } catch (e) {
+      transcribeError = String(e);
+      log.warn('transcription failed', { updateId, error: transcribeError });
+    }
+  }
+
+  const prompt = buildMediaPrompt({
+    kind: media.kind,
+    userId: from.id,
+    localPath: dest,
+    caption: media.caption,
+    transcript,
+    transcribeError,
+  });
+  const taskId = store.enqueueTask({ source: 'telegram', kind: 'chat', userId: from.id, chatId: chat.id, prompt });
+  store.markProcessed(updateId);
+  log.info('media task queued', { taskId, kind: media.kind, transcribed: media.isAudio && !transcribeError });
+}
+
 export interface BotDeps { store: Store; gate: PermissionGate; worker: Worker; startedAt: Date; }
 
 export function buildBot(cfg: AgentConfig, d: BotDeps): Bot {
@@ -79,6 +160,16 @@ export function buildBot(cfg: AgentConfig, d: BotDeps): Bot {
     handleApprovalCallback(d.gate, d.store, ctx as unknown as Context & { match: RegExpMatchArray }));
   bot.callbackQuery(/^rsm:(\d+)$/, (ctx) =>
     handleResumeCallback(d.store, ctx as unknown as Context & { match: RegExpMatchArray }));
+
+  // Non-text messages: download + (audio) transcribe + enqueue. Registered before
+  // the text handler; each grammY filter is independent so only the matching kind fires.
+  const mediaFilters = [
+    'message:photo', 'message:document', 'message:voice',
+    'message:audio', 'message:video', 'message:video_note',
+  ] as const;
+  for (const filter of mediaFilters) {
+    bot.on(filter, (ctx) => ingestMedia(ctx, cfg, d.store));
+  }
 
   // generic text intake LAST so command handlers win
   bot.on('message:text', (ctx) => {

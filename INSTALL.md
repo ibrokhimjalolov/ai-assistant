@@ -19,6 +19,7 @@ This guide is for setting it up on a **new device** from scratch.
 | **Claude Code** (to mint a token) | <https://claude.com/claude-code> — only needed once, to run `claude setup-token`. |
 | **A Telegram bot** | Create one in Telegram with **@BotFather** → copy the bot **token**. One bot per agent. |
 | **Your Telegram numeric user ID** | Message **@userinfobot** in Telegram → it replies with your numeric ID. |
+| **Voice transcription** *(optional)* | To let the agent understand voice/audio messages, install `whisper-cpp` + `ffmpeg` and the model — run `bash scripts/install-whisper.sh` (see §Voice messages). Without it, photos/PDFs/docs still work; voice notes get a polite "couldn't transcribe" reply. |
 
 > ⚠️ **Security:** this runtime drives Claude in **bypass-permissions mode** — it
 > auto-runs tools (shell, file edits, sends) with **no approval prompts**. Anyone
@@ -201,12 +202,45 @@ rm -rf "$HOME/Library/Application Support/agent-runtime"
 
 ---
 
-## 11. Troubleshooting
+## 11. Voice messages (optional)
+
+The agent can understand **voice notes and audio files** you send in Telegram. It
+transcribes them **locally** (no cloud, no per-minute cost) with `whisper.cpp`,
+then treats the transcript as if you had typed it. Photos, PDFs, and Office docs
+work with **no extra setup** — the agent opens them directly.
+
+To enable voice transcription, install the dependencies once:
+
+```bash
+bash scripts/install-whisper.sh
+```
+
+That installs `whisper-cpp` + `ffmpeg` via Homebrew and downloads the
+`large-v3-turbo` model (~1.6 GB) to `~/.agent-runtime/models/`. Restart the
+runtime afterward. The model handles English, Russian, Uzbek, and 90+ other
+languages with automatic detection.
+
+Config knobs (optional, per agent in `config.json`):
+
+| Key | Default | Purpose |
+| --- | --- | --- |
+| `whisperBin` | `whisper-cli` | Path to the whisper.cpp binary. |
+| `whisperModel` | `~/.agent-runtime/models/ggml-large-v3-turbo.bin` | ggml model file. |
+| `ffmpegBin` | `ffmpeg` | ffmpeg used to decode audio to 16 kHz WAV. |
+| `transcribeLanguage` | *(auto)* | Force a language, e.g. `"ru"` or `"uz"`, to skip auto-detect. |
+
+Without these installed, voice/audio messages get a polite "couldn't transcribe"
+reply instead of being silently dropped; everything else keeps working.
+
+---
+
+## 12. Troubleshooting
 
 | Symptom | Fix |
 | --- | --- |
 | "AgentRuntime can't be opened" (Gatekeeper) | Right-click → Open → Open, or `xattr -dr com.apple.quarantine /Applications/AgentRuntime.app`. |
 | "Node.js was not found" dialog | Install Node 22+ from nodejs.org, then open the app again. |
+| Voice notes reply "couldn't transcribe" | Run `bash scripts/install-whisper.sh`, restart the runtime. Check `whisper-cli` and `ffmpeg` are on `PATH` and the model file exists. |
 | Bot doesn't reply | `tail` the log (above). Common causes: wrong/duplicate bot token, your ID not in `whitelist`, or an expired `claudeOauthToken` (re-run `claude setup-token` and update config). |
 | Service keeps exiting (`launchctl list` shows non-zero) | Check `agent-runtime.err.log`; usually a bad `config.json` (it must be valid JSON) or a missing `agentHome` folder. |
 | Doesn't come back after reboot | You're sitting at the login screen — log in, or enable auto-login (§6). |
@@ -214,7 +248,7 @@ rm -rf "$HOME/Library/Application Support/agent-runtime"
 
 ---
 
-## 12. Notes
+## 13. Notes
 
 - Unsigned/not notarized — fine for trusted internal use; that's why the first
   open needs right-click → Open.

@@ -1,4 +1,6 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 /** One agent's configuration: its own bot, whitelist, Agent Home, and Claude token. */
 export interface AgentConfig {
@@ -12,6 +14,14 @@ export interface AgentConfig {
   bashAllowlist: string[];
   /** Auto-rotate the session when context usage reaches this fraction [0,1]; 0 disables. */
   rotateAtContextFraction: number;
+  /** Local whisper.cpp binary used to transcribe Telegram voice/audio (see transcribe.ts). */
+  whisperBin: string;
+  /** Path to the whisper.cpp ggml model file (large-v3-turbo by default). */
+  whisperModel: string;
+  /** ffmpeg binary used to decode audio to 16 kHz WAV before transcription. */
+  ffmpegBin: string;
+  /** ISO language hint for transcription (e.g. 'ru', 'uz'); omitted → whisper auto-detects. */
+  transcribeLanguage?: string;
 }
 
 /** Top-level config: a list of agents, plus an optional shared default Claude token. */
@@ -40,6 +50,12 @@ const AGENT_DEFAULTS = {
   // conversation coherent in place instead of dropping the session and losing the
   // thread. Set rotateAtContextFraction > 0 per agent to re-enable the old teardown.
   rotateAtContextFraction: 0,
+  // Local speech-to-text for Telegram voice/audio. whisper-cli comes from
+  // `brew install whisper-cpp`; the model is fetched to ~/.agent-runtime/models.
+  // Override per agent in config to point at a different binary/model/language.
+  whisperBin: 'whisper-cli',
+  whisperModel: join(homedir(), '.agent-runtime', 'models', 'ggml-large-v3-turbo.bin'),
+  ffmpegBin: 'ffmpeg',
 };
 
 const TEMPLATE = {
