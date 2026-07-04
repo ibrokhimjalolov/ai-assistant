@@ -51,10 +51,11 @@ const AGENT_DEFAULTS = {
   // thread. Set rotateAtContextFraction > 0 per agent to re-enable the old teardown.
   rotateAtContextFraction: 0,
   // Local speech-to-text for Telegram voice/audio. whisper-cli comes from
-  // `brew install whisper-cpp`; the model is fetched to ~/.agent-runtime/models.
+  // `brew install whisper-cpp`; the model is fetched to ~/.agent-runtime/models by
+  // scripts/install-whisper.sh (large-v3 — most accurate, best for Uzbek/Russian).
   // Override per agent in config to point at a different binary/model/language.
   whisperBin: 'whisper-cli',
-  whisperModel: join(homedir(), '.agent-runtime', 'models', 'ggml-large-v3-turbo.bin'),
+  whisperModel: join(homedir(), '.agent-runtime', 'models', 'ggml-large-v3.bin'),
   ffmpegBin: 'ffmpeg',
 };
 

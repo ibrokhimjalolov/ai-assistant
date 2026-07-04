@@ -216,16 +216,18 @@ bash scripts/install-whisper.sh
 ```
 
 That installs `whisper-cpp` + `ffmpeg` via Homebrew and downloads the
-`large-v3-turbo` model (~1.6 GB) to `~/.agent-runtime/models/`. Restart the
-runtime afterward. The model handles English, Russian, Uzbek, and 90+ other
-languages with automatic detection.
+`large-v3` model (~3.1 GB) to `~/.agent-runtime/models/`. Restart the runtime
+afterward. `large-v3` is the most accurate model and handles English, Russian,
+Uzbek, and 90+ other languages with automatic detection. (For a smaller/faster
+option at some accuracy cost, point `whisperModel` at `ggml-large-v3-turbo.bin`
+instead.)
 
 Config knobs (optional, per agent in `config.json`):
 
 | Key | Default | Purpose |
 | --- | --- | --- |
 | `whisperBin` | `whisper-cli` | Path to the whisper.cpp binary. |
-| `whisperModel` | `~/.agent-runtime/models/ggml-large-v3-turbo.bin` | ggml model file. |
+| `whisperModel` | `~/.agent-runtime/models/ggml-large-v3.bin` | ggml model file. |
 | `ffmpegBin` | `ffmpeg` | ffmpeg used to decode audio to 16 kHz WAV. |
 | `transcribeLanguage` | *(auto)* | Force a language, e.g. `"ru"` or `"uz"`, to skip auto-detect. |
 

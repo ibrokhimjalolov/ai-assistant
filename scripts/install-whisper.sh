@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Install local voice-transcription dependencies for the Agent Runtime:
 #   - whisper-cpp (provides `whisper-cli`) + ffmpeg, via Homebrew
-#   - the whisper large-v3-turbo ggml model (~1.6 GB) into ~/.agent-runtime/models
+#   - the whisper large-v3 ggml model (~3.1 GB) into ~/.agent-runtime/models
+# large-v3 is the most accurate model, notably better on lower-resource languages
+# (Uzbek, Russian) than the smaller/turbo variants.
 # Safe to re-run: skips anything already present. See INSTALL.md §Voice messages.
 set -euo pipefail
 
 MODEL_DIR="$HOME/.agent-runtime/models"
-MODEL_FILE="$MODEL_DIR/ggml-large-v3-turbo.bin"
-MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+MODEL_FILE="$MODEL_DIR/ggml-large-v3.bin"
+MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin"
 
 echo "==> Checking Homebrew"
 if ! command -v brew >/dev/null 2>&1; then
@@ -26,11 +28,11 @@ done
 
 echo "==> Ensuring whisper model at $MODEL_FILE"
 mkdir -p "$MODEL_DIR"
-# large-v3-turbo is ~1.62 GB; treat a clearly-too-small file as incomplete and refetch.
-if [ -f "$MODEL_FILE" ] && [ "$(stat -f%z "$MODEL_FILE" 2>/dev/null || echo 0)" -gt 1000000000 ]; then
+# large-v3 is ~3.1 GB; treat a clearly-too-small file as incomplete and refetch.
+if [ -f "$MODEL_FILE" ] && [ "$(stat -f%z "$MODEL_FILE" 2>/dev/null || echo 0)" -gt 2500000000 ]; then
   echo "    model already present ($(stat -f%z "$MODEL_FILE") bytes)"
 else
-  echo "    downloading model (~1.6 GB) — this can take a few minutes…"
+  echo "    downloading model (~3.1 GB) — this can take several minutes…"
   curl -L --fail -o "$MODEL_FILE" "$MODEL_URL"
 fi
 
