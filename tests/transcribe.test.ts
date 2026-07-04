@@ -1,5 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { buildFfmpegArgs, buildWhisperArgs, cleanTranscript, transcribeAudio } from '../src/transcribe.js';
+import { buildFfmpegArgs, buildWhisperArgs, cleanTranscript, transcribeAudio, augmentedPath } from '../src/transcribe.js';
+
+describe('augmentedPath', () => {
+  it('adds Homebrew bin dirs missing from a minimal launchd PATH', () => {
+    const out = augmentedPath('/usr/bin:/bin:/usr/sbin:/sbin');
+    expect(out.split(':')).toContain('/opt/homebrew/bin');
+    expect(out.split(':')).toContain('/usr/local/bin');
+    // keeps the original entries
+    expect(out.split(':')).toContain('/usr/bin');
+  });
+
+  it('does not duplicate a dir that is already present', () => {
+    const out = augmentedPath('/opt/homebrew/bin:/usr/bin');
+    expect(out.split(':').filter((p) => p === '/opt/homebrew/bin')).toHaveLength(1);
+  });
+
+  it('handles an undefined PATH', () => {
+    const out = augmentedPath(undefined);
+    expect(out.split(':')).toContain('/opt/homebrew/bin');
+  });
+});
 
 describe('buildFfmpegArgs', () => {
   it('decodes to 16 kHz mono PCM WAV (what whisper.cpp requires)', () => {

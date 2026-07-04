@@ -43,9 +43,24 @@ export function cleanTranscript(raw: string): string {
     .trim();
 }
 
+/**
+ * PATH with the common Homebrew bin dirs appended. The runtime runs under launchd,
+ * whose default PATH is `/usr/bin:/bin:/usr/sbin:/sbin` — it excludes /opt/homebrew/bin
+ * (Apple Silicon) and /usr/local/bin (Intel) where whisper-cli/ffmpeg install, so a
+ * bare `spawn('ffmpeg')` fails with ENOENT (code 127). Appended (not prepended) so a
+ * user-set PATH still wins; deduped so an already-present dir isn't added twice.
+ */
+export function augmentedPath(current: string | undefined): string {
+  const parts = (current ?? '').split(':').filter(Boolean);
+  for (const dir of ['/opt/homebrew/bin', '/usr/local/bin']) {
+    if (!parts.includes(dir)) parts.push(dir);
+  }
+  return parts.join(':');
+}
+
 const defaultRun: RunCommand = (cmd, args) =>
   new Promise((resolve) => {
-    const p = spawn(cmd, args);
+    const p = spawn(cmd, args, { env: { ...process.env, PATH: augmentedPath(process.env.PATH) } });
     let stdout = '';
     let stderr = '';
     p.stdout.on('data', (d) => (stdout += d));
