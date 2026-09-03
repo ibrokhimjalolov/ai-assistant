@@ -157,7 +157,7 @@ export class Worker {
         `[Scheduled job created by Telegram user ${task.userId}. Your final reply is automatically delivered ` +
         `to them as a Telegram message in this chat. Respond with ONLY the content to show the user, and do NOT ` +
         `call any tool to send or deliver it — no send_message, no Telegram/messaging tools. Just write the message ` +
-        `as your answer.]\n\n${task.prompt}`
+        `as your answer. (The runtime send_file tool is the one exception: use it if the job's result is a file.)]\n\n${task.prompt}`
       );
     }
     return `[Message from Telegram user ${task.userId}]\n\n${task.prompt}`;

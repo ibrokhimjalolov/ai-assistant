@@ -79,3 +79,49 @@ describe('GrammyTelegramApi.editMessageText', () => {
     expect(fake.edits[0].opts.parse_mode).toBeUndefined();
   });
 });
+
+describe('GrammyTelegramApi.sendDocument', () => {
+  class DocFake extends FakeApi {
+    docs: { chatId: number; file: any; opts: any }[] = [];
+    async sendDocument(chatId: number, file: any, opts: any) {
+      if (this.failNextWith) { const e = this.failNextWith; this.failNextWith = null; throw e; }
+      this.docs.push({ chatId, file, opts });
+      return { message_id: 777 };
+    }
+  }
+  let doc: DocFake; let api2: GrammyTelegramApi;
+  beforeEach(() => { doc = new DocFake(); api2 = new GrammyTelegramApi(doc as any); });
+
+  it('uploads the local file via InputFile with an HTML caption', async () => {
+    const id = await api2.sendDocument(5, '/tmp/report.pdf', '<b>Q3</b>');
+    expect(id).toBe(777);
+    expect(doc.docs).toHaveLength(1);
+    expect(doc.docs[0].chatId).toBe(5);
+    expect(doc.docs[0].file?.constructor?.name).toBe('InputFile');
+    expect(doc.docs[0].opts).toMatchObject({ caption: '<b>Q3</b>', parse_mode: 'HTML' });
+  });
+
+  it('omits the caption entirely when empty', async () => {
+    await api2.sendDocument(5, '/tmp/report.pdf', '');
+    expect(doc.docs[0].opts.caption).toBeUndefined();
+    expect(doc.docs[0].opts.parse_mode).toBeUndefined();
+  });
+
+  it('truncates captions to the 1024-char Telegram limit', async () => {
+    await api2.sendDocument(5, '/tmp/report.pdf', 'x'.repeat(2000));
+    expect(doc.docs[0].opts.caption).toHaveLength(1024);
+  });
+
+  it('falls back to a plain-text caption when Telegram rejects entities', async () => {
+    doc.failNextWith = { error_code: 400, description: "can't parse entities" };
+    await api2.sendDocument(5, '/tmp/report.pdf', '<b>Q3</b>');
+    expect(doc.docs).toHaveLength(1);
+    expect(doc.docs[0].opts).toMatchObject({ caption: 'Q3' });
+    expect(doc.docs[0].opts.parse_mode).toBeUndefined();
+  });
+
+  it('propagates non-parse errors', async () => {
+    doc.failNextWith = new Error('network down');
+    await expect(api2.sendDocument(5, '/tmp/report.pdf', 'c')).rejects.toThrow('network down');
+  });
+});

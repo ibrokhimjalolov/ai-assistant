@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS outbox (
   content TEXT NOT NULL,
   reply_markup TEXT,
   edit_of INTEGER REFERENCES outbox(id),
+  file_path TEXT,
   message_id INTEGER,
   attempts INTEGER NOT NULL DEFAULT 0,
   last_attempt_at TEXT,
@@ -111,6 +112,14 @@ function migrateTasks(db: Database.Database): void {
   }
 }
 
+/** Outbound file delivery (send_file): a nullable file_path on outbox; content becomes the caption. */
+function migrateOutbox(db: Database.Database): void {
+  const cols = db.pragma('table_info(outbox)') as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === 'file_path')) {
+    db.exec(`ALTER TABLE outbox ADD COLUMN file_path TEXT`);
+  }
+}
+
 export function openDb(path: string): Database.Database {
   const db = new Database(path);
   // ':memory:' databases always report 'memory'; file DBs must actually get WAL
@@ -122,5 +131,6 @@ export function openDb(path: string): Database.Database {
   db.exec(SCHEMA);
   migrateSchedules(db);
   migrateTasks(db);
+  migrateOutbox(db);
   return db;
 }

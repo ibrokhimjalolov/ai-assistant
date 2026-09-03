@@ -105,6 +105,14 @@ export class Store {
     return Number(r.lastInsertRowid);
   }
 
+  /** Queue a local file for upload to a chat (Sender → sendDocument). `caption` is Telegram HTML, may be empty. */
+  enqueueFile(m: { chatId: number; filePath: string; caption?: string }): number {
+    const r = this.db
+      .prepare(`INSERT INTO outbox (chat_id, kind, content, file_path) VALUES (?, 'reply', ?, ?)`)
+      .run(m.chatId, m.caption ?? '', m.filePath);
+    return Number(r.lastInsertRowid);
+  }
+
   enqueueEdit(editOf: number, content: string): number {
     const ins = this.db.transaction((): number => {
       const orig = this.db.prepare(`SELECT chat_id FROM outbox WHERE id = ?`).get(editOf) as any;
@@ -124,7 +132,7 @@ export class Store {
       .all() as any[];
     return rows.map((r) => ({
       id: r.id, chatId: r.chat_id, kind: r.kind as OutKind, content: r.content,
-      replyMarkup: r.reply_markup ?? null, editOf: r.edit_of ?? null,
+      replyMarkup: r.reply_markup ?? null, editOf: r.edit_of ?? null, filePath: r.file_path ?? null,
       attempts: r.attempts, lastAttemptAt: r.last_attempt_at ?? null,
     }));
   }
@@ -139,6 +147,11 @@ export class Store {
     this.db
       .prepare(`UPDATE outbox SET attempts = attempts + 1, last_attempt_at = ? WHERE id = ?`)
       .run(at.toISOString(), id);
+  }
+
+  /** Give up on a message for good (e.g. its file vanished) — it leaves the unsent set without a message_id. */
+  dropMessage(id: number): void {
+    this.db.prepare(`UPDATE outbox SET attempts = 8, last_attempt_at = ? WHERE id = ?`).run(new Date().toISOString(), id);
   }
 
   sentMessageId(outboxId: number): number | null {

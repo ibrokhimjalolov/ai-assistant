@@ -141,3 +141,19 @@ describe('mapSdkMessage contextFraction', () => {
     expect((ev as any).contextFraction).toBeNull();
   });
 });
+
+import { FILE_DELIVERY_INSTRUCTION } from '../src/claude.js';
+
+describe('FILE_DELIVERY_INSTRUCTION', () => {
+  it('names the send_file tool and the absolute-path requirement', () => {
+    expect(FILE_DELIVERY_INSTRUCTION).toContain('send_file');
+    expect(FILE_DELIVERY_INSTRUCTION.toLowerCase()).toContain('absolute');
+  });
+  it('forbids claiming a file was sent without calling the tool, and forbids pasting file contents instead', () => {
+    expect(FILE_DELIVERY_INSTRUCTION).toMatch(/NEVER/);
+    expect(FILE_DELIVERY_INSTRUCTION.toLowerCase()).toContain('paste');
+  });
+  it('states the size cap so the agent can warn instead of failing', () => {
+    expect(FILE_DELIVERY_INSTRUCTION).toContain('50 MB');
+  });
+});

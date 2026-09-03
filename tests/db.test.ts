@@ -63,3 +63,25 @@ describe('openDb', () => {
     expect(seq).toBe(2);
   });
 });
+
+describe('outbox file_path (outbound file delivery)', () => {
+  it('fresh schema has a nullable file_path column on outbox', () => {
+    const db = openDb(':memory:');
+    const cols = (db.pragma('table_info(outbox)') as any[]).map((c) => c.name);
+    expect(cols).toContain('file_path');
+    expect(() => db.prepare(`INSERT INTO outbox (chat_id, content) VALUES (1, 'x')`).run()).not.toThrow();
+  });
+
+  it('migrates an old outbox table (no file_path) preserving rows', () => {
+    const p = join(mkdtempSync(join(tmpdir(), 'mig3-')), 'old.db');
+    const raw = new Database(p);
+    raw.exec(`CREATE TABLE outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'reply', content TEXT NOT NULL, reply_markup TEXT, edit_of INTEGER, message_id INTEGER, attempts INTEGER NOT NULL DEFAULT 0, last_attempt_at TEXT, sent_at TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+    raw.prepare(`INSERT INTO outbox (chat_id, content) VALUES (5, 'old row')`).run();
+    raw.close();
+    const db = openDb(p);
+    const cols = (db.pragma('table_info(outbox)') as any[]).map((c) => c.name);
+    expect(cols).toContain('file_path');
+    const row = db.prepare(`SELECT chat_id, content, file_path FROM outbox`).get() as any;
+    expect(row).toMatchObject({ chat_id: 5, content: 'old row', file_path: null });
+  });
+});
