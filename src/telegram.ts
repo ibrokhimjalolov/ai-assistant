@@ -1,4 +1,4 @@
-import { Bot, type Api, type Context, type NextFunction } from 'grammy';
+import { Bot, InputFile, type Api, type Context, type NextFunction } from 'grammy';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AgentConfig } from './config.js';
@@ -194,6 +194,9 @@ function isTelegramParseError(e: unknown): boolean {
   return /can't parse entities|unsupported start tag|can't find end|unclosed|entit|byte offset/.test(msg);
 }
 
+/** Telegram Bot API limit for media captions (characters). */
+const TELEGRAM_CAPTION_LIMIT = 1024;
+
 /** Adapter: grammY Api → the Sender's TelegramApi interface.
  * The agent is instructed to emit Telegram HTML (see TELEGRAM_OUTPUT_INSTRUCTION),
  * so we send its text as-is with `parse_mode: 'HTML'`. If Telegram rejects the
@@ -224,5 +227,18 @@ export class GrammyTelegramApi implements TelegramApi {
   }
   async sendChatAction(chatId: number, action: string): Promise<void> {
     await this.api.sendChatAction(chatId, action as Parameters<typeof this.api.sendChatAction>[1]);
+  }
+  /** Upload a local file via multipart (grammY InputFile). Caption is HTML with the same plain-text fallback as text. */
+  async sendDocument(chatId: number, filePath: string, caption: string): Promise<number> {
+    const cap = caption.slice(0, TELEGRAM_CAPTION_LIMIT);
+    try {
+      const r = await this.api.sendDocument(chatId, new InputFile(filePath), cap ? { caption: cap, parse_mode: 'HTML' } : {});
+      return r.message_id;
+    } catch (e) {
+      if (!cap || !isTelegramParseError(e)) throw e;
+      log.warn('telegram rejected HTML caption entities; resending as plain text', { chatId });
+      const r = await this.api.sendDocument(chatId, new InputFile(filePath), { caption: htmlToPlain(cap) });
+      return r.message_id;
+    }
   }
 }

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import type { Store } from './store.js';
 import { logger } from './log.js';
 
@@ -7,6 +8,8 @@ export interface TelegramApi {
   sendMessage(chatId: number, text: string, replyMarkupJson?: string | null): Promise<number>;
   editMessageText(chatId: number, messageId: number, text: string): Promise<void>;
   sendChatAction(chatId: number, action: string): Promise<void>;
+  /** Upload a local file as a document. `caption` is Telegram HTML; empty string = no caption. Resolves to the message id. */
+  sendDocument(chatId: number, filePath: string, caption: string): Promise<number>;
 }
 
 export class Sender {
@@ -24,6 +27,15 @@ export class Sender {
           if (target == null) continue; // original not sent yet — pick up next drain
           await this.api.editMessageText(m.chatId, target, m.content);
           this.store.markSent(m.id, target);
+        } else if (m.filePath != null) {
+          if (!existsSync(m.filePath)) {
+            // The file was validated at enqueue time; if it is gone now, retrying can't help.
+            this.store.dropMessage(m.id);
+            log.error('file to send no longer exists — dropped', { id: m.id, chatId: m.chatId, filePath: m.filePath });
+            continue;
+          }
+          const mid = await this.api.sendDocument(m.chatId, m.filePath, m.content);
+          this.store.markSent(m.id, mid);
         } else {
           const mid = await this.api.sendMessage(m.chatId, m.content, m.replyMarkup);
           this.store.markSent(m.id, mid);

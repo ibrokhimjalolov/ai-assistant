@@ -24,6 +24,8 @@ export interface OutMessage {
   content: string;
   replyMarkup: string | null;
   editOf: number | null;
+  /** Absolute path of a local file to upload (sendDocument); `content` is then the caption. Null for text. */
+  filePath: string | null;
   attempts: number;
   lastAttemptAt: string | null;
 }

@@ -79,3 +79,31 @@ describe('meta', () => {
     expect(store.getMeta('k')).toBe('v');
   });
 });
+
+describe('outbox files', () => {
+  it('enqueueFile stores the path and caption and lists it as unsent', () => {
+    const id = store.enqueueFile({ chatId: 5, filePath: '/tmp/report.xlsx', caption: 'Q3 report' });
+    const [m] = store.unsentMessages();
+    expect(m.id).toBe(id);
+    expect(m.filePath).toBe('/tmp/report.xlsx');
+    expect(m.content).toBe('Q3 report');
+    expect(m.kind).toBe('reply');
+  });
+
+  it('enqueueFile without caption stores empty content', () => {
+    store.enqueueFile({ chatId: 5, filePath: '/tmp/a.pdf' });
+    expect(store.unsentMessages()[0].content).toBe('');
+  });
+
+  it('text messages report filePath null', () => {
+    store.enqueueMessage({ chatId: 5, content: 'hi' });
+    expect(store.unsentMessages()[0].filePath).toBeNull();
+  });
+
+  it('dropMessage removes a row from the unsent set permanently', () => {
+    const id = store.enqueueFile({ chatId: 5, filePath: '/tmp/gone.pdf' });
+    store.dropMessage(id);
+    expect(store.unsentMessages()).toEqual([]);
+    expect(store.sentMessageId(id)).toBeNull();
+  });
+});

@@ -1,8 +1,55 @@
 import { tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
 import parser from 'cron-parser';
 import { z } from 'zod';
+import { statSync } from 'node:fs';
+import { basename, isAbsolute } from 'node:path';
 import type { Store } from './store.js';
 import type { Task } from './types.js';
+
+/** Telegram Bot API cap for files uploaded BY a bot (sendDocument multipart). */
+export const MAX_SEND_FILE_BYTES = 50 * 1024 * 1024;
+
+/** Validate that a path names a local regular file the bot can upload. Pure apart from a stat. */
+export function checkSendableFile(
+  path: string,
+  opts: { maxBytes?: number } = {},
+): { ok: true; name: string; size: number } | { error: string } {
+  const maxBytes = opts.maxBytes ?? MAX_SEND_FILE_BYTES;
+  if (!isAbsolute(path)) return { error: `path must be absolute (got "${path}")` };
+  let st;
+  try {
+    st = statSync(path);
+  } catch {
+    return { error: `file not found: ${path}` };
+  }
+  if (!st.isFile()) return { error: `not a regular file (is it a directory?): ${path}` };
+  if (st.size > maxBytes) {
+    const mb = (n: number): string => (n / (1024 * 1024)).toFixed(1);
+    return { error: `file too large: ${mb(st.size)} MB exceeds the ${mb(maxBytes)} MB Telegram upload limit` };
+  }
+  return { ok: true, name: basename(path), size: st.size };
+}
+
+/**
+ * Body of the `send_file` tool: validate, then queue the file on the outbox for the
+ * task's OWN chat. The destination is never taken from the input — the agent can
+ * only deliver files to the user it is currently talking to.
+ */
+export function queueFileForDelivery(
+  store: Store,
+  task: Pick<Task, 'userId' | 'chatId'>,
+  input: { path: string; caption?: string },
+): { text: string; isError?: boolean } {
+  const check = checkSendableFile(input.path);
+  if ('error' in check) return { text: `send_file failed: ${check.error}`, isError: true };
+  const id = store.enqueueFile({ chatId: task.chatId, filePath: input.path, caption: input.caption?.trim() || undefined });
+  const kb = Math.max(1, Math.round(check.size / 1024));
+  return {
+    text:
+      `Queued ${check.name} (${kb} KB) for delivery to this chat as outbox #${id}; it will be uploaded within a few seconds. ` +
+      'Do not paste the file contents into your reply and do not describe it as "attached" beyond a short mention.',
+  };
+}
 
 /** Resolve a reminder's absolute fire time from a relative delay or an absolute/HH:MM `at`. Pure + testable. */
 export function resolveRunAt(
@@ -80,6 +127,22 @@ export function runtimeMcpServer(store: Store, task: Pick<Task, 'userId' | 'chat
             if ('error' in r) return { content: [{ type: 'text', text: r.error }], isError: true };
             const id = store.createReminder({ runAt: r.runAt, prompt: a.prompt, createdByUserId: task.userId, chatId: task.chatId });
             return { content: [{ type: 'text', text: `Reminder #${id} set for ${r.runAt}` }] };
+          },
+        ),
+        tool(
+          'send_file',
+          'Deliver a local file (report, spreadsheet, PDF, image, archive, any file on disk) to the user you are ' +
+            'talking to, as a Telegram document upload in this chat. `path` MUST be an absolute path to an existing ' +
+            `file of at most 50 MB. Optional \`caption\` is short Telegram HTML shown under the file. ` +
+            'The upload happens automatically right after this call; your final text reply is sent separately, so ' +
+            'do not paste the file contents into it.',
+          {
+            path: z.string().describe('Absolute path to the local file to upload.'),
+            caption: z.string().max(1024).optional().describe('Optional short caption (Telegram HTML).'),
+          },
+          async (a) => {
+            const r = queueFileForDelivery(store, task, a);
+            return { content: [{ type: 'text', text: r.text }], ...(r.isError ? { isError: true } : {}) };
           },
         ),
       ],

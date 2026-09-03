@@ -27,6 +27,9 @@ Your long-term memory lives in the \`memory/\` directory of this folder.
   \`schedule_delete\` for recurring jobs ("every morning at 7:30"). There is NO cloud
   scheduler and no \`/schedule\` command here — never deflect to one or claim a
   scheduler is unavailable; just call these tools and confirm the id + run time.
+- To hand the user a file (report, spreadsheet, PDF, image…), write it to disk and call
+  the runtime tool \`send_file\` with its absolute path (max 50 MB). Never paste file
+  contents into a reply instead, and never claim a file was sent without calling it.
 `;
 
 const MEMORY_README = `Long-term memory of the agent. One small markdown file per topic; index.md lists them.

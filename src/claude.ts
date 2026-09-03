@@ -97,6 +97,27 @@ reminder id and exactly when it will run. If a required detail is missing or the
 time is ambiguous, ASK. Never fabricate either success or failure.
 `.trim();
 
+/**
+ * Appended to the agent's system prompt. Files reach the user ONLY through the
+ * runtime `send_file` tool (outbox → sendDocument); without this the model either
+ * pastes a file's contents into the reply or claims "attached" with nothing sent.
+ */
+export const FILE_DELIVERY_INSTRUCTION = `
+## Sending files to the user (IMPORTANT)
+
+To give the user a FILE (a report, spreadsheet, PDF, image, screenshot, archive — anything on
+disk), call the runtime tool send_file with the ABSOLUTE path of an existing local file
+(max 50 MB). The runtime uploads it to this chat automatically, right after the call.
+
+- Create the file first (e.g. under your working directory), then call send_file with its
+  absolute path, optionally with a short caption. Then write your normal short text reply.
+- NEVER paste a whole file's contents into a message as a substitute for sending it, and NEVER
+  say a file is "attached"/"sent" unless you actually called send_file in this turn and it
+  returned "Queued". If send_file returns an error, tell the user what went wrong.
+- Files the user sends you arrive as local paths under incoming/ (see the task message); you
+  may send those back, or derived files, the same way.
+`.trim();
+
 export class SdkClaudeRunner implements ClaudeRunner {
   async *run(req: RunRequest): AsyncIterable<RunEvent> {
     const abortController = new AbortController();
@@ -135,7 +156,10 @@ export class SdkClaudeRunner implements ClaudeRunner {
         systemPrompt: {
           type: 'preset',
           preset: 'claude_code',
-          append: [TELEGRAM_OUTPUT_INSTRUCTION, MEMORY_DISCIPLINE_INSTRUCTION, SCHEDULING_DISCIPLINE_INSTRUCTION].join('\n\n'),
+          append: [
+            TELEGRAM_OUTPUT_INSTRUCTION, MEMORY_DISCIPLINE_INSTRUCTION,
+            SCHEDULING_DISCIPLINE_INSTRUCTION, FILE_DELIVERY_INSTRUCTION,
+          ].join('\n\n'),
         },
         abortController,
         // The SDK's CanUseTool receives a third `options` argument (signal, toolUseID, etc.)
